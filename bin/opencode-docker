@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+# Determine git root and compute hash
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+	GIT_ROOT=$(git rev-parse --show-toplevel)
+	HASH=$(echo -n "$GIT_ROOT" | sha1sum | cut -c1-8)
+	MOUNT_SRC="$GIT_ROOT"
+else
+	HASH=$(echo -n "$PWD" | sha1sum | cut -c1-8)
+	MOUNT_SRC="$PWD"
+fi
+
+hash_name_map_file=~/.opencode_map
+if ! grep -q "^opencode-$HASH:" "$hash_name_map_file" 2>/dev/null
+then
+	echo "opencode-$HASH:$MOUNT_SRC" >> "$hash_name_map_file"
+fi
+
+# Run docker container with name based on hash
+set -e
+
+# Compute container name based on project hash (same as before)
+CONTAINER_NAME="opencode-$HASH"
+
+is_container_stale() {
+	local current_image_id container_image_id
+	current_image_id=$(docker image inspect opencode-dev:latest --format '{{.Id}}' 2>/dev/null) || return 1
+	container_image_id=$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null) || return 1
+	[[ "$current_image_id" != "$container_image_id" ]]
+}
+
+has_active_exec_sessions() {
+	local exec_ids
+	exec_ids=$(docker inspect --format '{{json .ExecIDs}}' "$CONTAINER_NAME" 2>/dev/null)
+	[[ "$exec_ids" != "null" && -n "$exec_ids" ]]
+}
+
+ensure_dummy_container() {
+	if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+		if is_container_stale; then
+			if has_active_exec_sessions; then
+				echo "Warning: Container ${CONTAINER_NAME} uses an outdated image but has active sessions." >&2
+				read -r -p "Force replace? Active sessions will be terminated. [y/N] " answer
+				if [[ "$answer" =~ ^[Yy]$ ]]; then
+					echo "Replacing container ${CONTAINER_NAME}…"
+					docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
+					sleep 1
+					start_dummy_container
+				else
+					echo "Continuing with outdated container." >&2
+				fi
+			else
+				echo "Container ${CONTAINER_NAME} uses an outdated image. Replacing…"
+				docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
+				sleep 1
+				start_dummy_container
+			fi
+		fi
+	else
+		start_dummy_container
+	fi
+}
+
+start_dummy_container() {
+	PARENT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+	echo "Launching dummy container ${CONTAINER_NAME}…"
+	docker run --rm -d --name "${CONTAINER_NAME}" \
+		-v "${MOUNT_SRC}:/code-$HASH" \
+		-v "${PARENT_DIR}/claude:/root/.claude" \
+		-v "${PARENT_DIR}/claude.json:/root/.claude.json" \
+		-v "$HOME/.local/share/opencode":/root/.local/share/opencode \
+		--workdir /code-"$HASH" \
+		opencode-dev:latest tail -f /dev/null
+	}
+
+# Ensure dummy container is up
+ensure_dummy_container
+
+claude_yolo=
+
+if [[ "$1" = "sh" || "$1" == "bash" ]]
+then
+	cmd="$1"
+	shift
+elif [[ "$1" = "claude" ]]
+then
+	claude_yolo=yes
+	cmd="$1"
+	shift
+elif [[ "$0" == *"/claude" || "$0" == *"/claude-docker" ]]
+then
+	claude_yolo=yes
+	cmd=claude
+else
+	cmd=opencode
+fi
+
+if [ -z "$claude_yolo" ]
+then
+	exec docker exec -it "${CONTAINER_NAME}" $cmd "$@"
+else
+	exec docker exec -it "${CONTAINER_NAME}" $cmd --dangerously-skip-permissions "$@"
+fi
