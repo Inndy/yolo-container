@@ -63,6 +63,8 @@ ensure_dummy_container() {
 
 start_dummy_container() {
 	PARENT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+	# Ensure claude.json exists as a regular file so Docker doesn't create it as a directory
+	[[ -f "${PARENT_DIR}/claude.json" ]] || touch "${PARENT_DIR}/claude.json"
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
 		--user "$(id -u):$(id -g)" \
