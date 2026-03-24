@@ -24,12 +24,12 @@ These files are `.gitignore`'d because they contain personal config. Create them
 
 | File | Purpose |
 |------|---------|
-| `gitconfig` | Copied to `/root/.gitconfig` inside the container. Use your usual git config (name, email, etc.). |
-| `opencode.json` | Copied to `/root/.config/opencode/`. OpenCode configuration. |
-| `model.json` | Copied to `/root/.local/state/opencode/`. OpenCode model settings. |
-| `claude.json` | Bind-mounted at runtime to `/root/.claude.json`. Claude Code configuration. |
+| `gitconfig` | Copied to `/home/dev/.gitconfig` inside the container. Use your usual git config (name, email, etc.). |
+| `opencode.json` | Copied to `/home/dev/.config/opencode/`. OpenCode configuration. |
+| `model.json` | Copied to `/home/dev/.local/state/opencode/`. OpenCode model settings. |
+| `claude.json` | Bind-mounted at runtime to `/home/dev/.claude.json`. Claude Code configuration. |
 
-The `claude/` directory is bind-mounted to `/root/.claude` at runtime for Claude Code state persistence.
+The `claude/` directory is bind-mounted to `/home/dev/.claude` at runtime for Claude Code state persistence.
 
 ## Build
 

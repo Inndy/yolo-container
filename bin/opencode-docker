@@ -65,10 +65,11 @@ start_dummy_container() {
 	PARENT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
+		--user "$(id -u):$(id -g)" \
 		-v "${MOUNT_SRC}:/code-$HASH" \
-		-v "${PARENT_DIR}/claude:/root/.claude" \
-		-v "${PARENT_DIR}/claude.json:/root/.claude.json" \
-		-v "$HOME/.local/share/opencode":/root/.local/share/opencode \
+		-v "${PARENT_DIR}/claude:/home/dev/.claude" \
+		-v "${PARENT_DIR}/claude.json:/home/dev/.claude.json" \
+		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
 		opencode-dev:latest tail -f /dev/null
 	}
