@@ -1,6 +1,6 @@
-# opencode-docker
+# yolo-container
 
-Run [opencode](https://opencode.ai) and [Claude Code](https://claude.ai) inside a Docker container with a full dev environment (Go, Node.js, Python, Neovim, etc.).
+Run [opencode](https://opencode.ai) and [Claude Code](https://claude.ai/code) in `--dangerously-skip-permissions` mode inside a Docker container. AI coding agents work best when they can freely read, write, and execute — but handing that level of access to an agentic process on your host machine is risky. This project wraps the whole thing in a container so the agent can run uninhibited while your host stays protected.
 
 Each project gets its own persistent container (keyed by git root path). Source code is bind-mounted into the container.
 
