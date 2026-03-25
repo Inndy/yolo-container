@@ -46,7 +46,7 @@ The script can also be symlinked as `claude` or `claude-docker` to change its de
 | `model.json` | `/home/dev/.config/opencode/model.json` | OpenCode model settings |
 
 ### User Remapping (`entrypoint.sh`)
-The entrypoint dynamically maps the host user's UID/GID into the container's `/etc/passwd` and `/etc/group`, so files written inside the container are owned by the host user. The container's `dev` user has passwordless sudo.
+The container starts as root. The entrypoint receives `HOST_UID`/`HOST_GID` via environment variables and remaps the `dev` user's UID/GID to match, deleting any conflicting system users/groups (e.g. macOS GID 20 vs Ubuntu's `dialout`). It then `chown`s `/home/dev` and `exec`s the command. All `docker exec` calls use `--user` to run as the remapped UID/GID. The `dev` user has passwordless sudo.
 
 ### Config Files (Not Committed)
 - `gitconfig` — Personal git configuration (example shows user "Inndy")
