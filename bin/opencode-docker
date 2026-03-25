@@ -36,6 +36,7 @@ has_active_exec_sessions() {
 }
 
 ensure_dummy_container() {
+	local need_restart=
 	if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 		if is_container_stale; then
 			if has_active_exec_sessions; then
@@ -43,18 +44,20 @@ ensure_dummy_container() {
 				read -r -p "Force replace? Active sessions will be terminated. [y/N] " answer
 				if [[ "$answer" =~ ^[Yy]$ ]]; then
 					echo "Replacing container ${CONTAINER_NAME}…"
-					docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
-					sleep 1
-					start_dummy_container
+					need_restart=1
 				else
 					echo "Continuing with outdated container." >&2
 				fi
 			else
 				echo "Container ${CONTAINER_NAME} uses an outdated image. Replacing…"
-				docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
-				sleep 1
-				start_dummy_container
+				need_restart=1
 			fi
+		fi
+
+		if [ -n "$need_restart" ]
+		then
+			docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
+			start_dummy_container
 		fi
 	else
 		start_dummy_container
@@ -62,19 +65,26 @@ ensure_dummy_container() {
 }
 
 start_dummy_container() {
-	PARENT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+	local script="$0"
+	while [ -L "$script" ]; do
+		local dir="$(cd "$(dirname "$script")" && pwd)"
+		script="$(readlink "$script")"
+		[[ "$script" != /* ]] && script="$dir/$script"
+	done
+	PARENT_DIR="$(cd "$(dirname "$script")/.." && pwd)"
 	# Ensure claude.json exists as a regular file so Docker doesn't create it as a directory
 	[[ -f "${PARENT_DIR}/claude.json" ]] || touch "${PARENT_DIR}/claude.json"
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
-		--user "$(id -u):$(id -g)" \
+		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
 		-v "${MOUNT_SRC}:/code-$HASH" \
 		-v "${PARENT_DIR}/claude:/home/dev/.claude" \
 		-v "${PARENT_DIR}/claude.json:/home/dev/.claude.json" \
 		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
 		opencode-dev:latest tail -f /dev/null
-	}
+	sleep 1
+}
 
 # Ensure dummy container is up
 ensure_dummy_container
@@ -100,7 +110,7 @@ fi
 
 if [ -z "$claude_yolo" ]
 then
-	exec docker exec -it "${CONTAINER_NAME}" $cmd "$@"
+	exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" $cmd "$@"
 else
-	exec docker exec -it "${CONTAINER_NAME}" $cmd --dangerously-skip-permissions "$@"
+	exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" $cmd --dangerously-skip-permissions "$@"
 fi

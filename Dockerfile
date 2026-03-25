@@ -65,5 +65,6 @@ COPY --chown=${DEV_USER}:${DEV_USER} opencode.json ${DEV_HOME}/.config/opencode/
 COPY --chown=${DEV_USER}:${DEV_USER} model.json ${DEV_HOME}/.local/state/opencode/
 COPY --chown=${DEV_USER}:${DEV_USER} gitconfig ${DEV_HOME}/.gitconfig
 
+USER root
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
