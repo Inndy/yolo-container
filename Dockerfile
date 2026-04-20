@@ -57,6 +57,10 @@ ENV PATH="$PATH:${DEV_HOME}/.local/bin"
 ENV IS_SANDBOX=1
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+# Install rbenv
+RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
+	~/.rbenv/bin/rbenv init bash
+
 # I'm not using codex personally, but here you go
 # RUN npm i -g @openai/codex
 
