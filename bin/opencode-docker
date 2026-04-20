@@ -56,7 +56,7 @@ ensure_dummy_container() {
 
 		if [ -n "$need_restart" ]
 		then
-			docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
+			docker kill "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
 			start_dummy_container
 		fi
 	else
@@ -76,6 +76,7 @@ start_dummy_container() {
 	[[ -f "${PARENT_DIR}/claude.json" ]] || touch "${PARENT_DIR}/claude.json"
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
+		--add-host=host.docker.internal:host-gateway \
 		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
 		-v "${MOUNT_SRC}:/code-$HASH" \
 		-v "${PARENT_DIR}/claude:/home/dev/.claude" \
@@ -83,7 +84,7 @@ start_dummy_container() {
 		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
 		opencode-dev:latest tail -f /dev/null
-	sleep 1
+	docker exec "$CONTAINER_NAME" flock -x /.ready -c true
 }
 
 # Ensure dummy container is up

@@ -5,6 +5,9 @@ DEV_UID=$(id -u dev)
 DEV_GID=$(id -g dev)
 NEED_CHOWN=0
 
+exec 3>/.ready
+flock -x 3
+
 if [ "$HOST_GID" != "$DEV_GID" ]; then
 	conflict_group=$(getent group "$HOST_GID" | cut -d: -f1)
 	if [ -n "$conflict_group" ] && [ "$conflict_group" != "dev" ] && [ "$HOST_GID" != "0" ]; then
@@ -27,4 +30,5 @@ if [ "$NEED_CHOWN" = 1 ]; then
 	chown -R "$HOST_UID:$HOST_GID" /home/dev
 fi
 
+exec 3>&-
 exec "$@"

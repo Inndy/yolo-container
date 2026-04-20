@@ -12,7 +12,8 @@ RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.l
 			curl build-essential git mingw-w64 python3 python3-dev python3-pip \
 			jq silversearcher-ag tmux htop sudo && \
 	apt-get clean && \
-	rm -rf /var/lib/apt/lists/*
+	rm -rf /var/lib/apt/lists/* && \
+	touch /.ready && chmod 666 /.ready
 
 # arm64 or x86_64
 ARG NEOVIM_ARCH="arm64"
