@@ -93,26 +93,18 @@ ensure_dummy_container
 
 claude_yolo=
 
-if [[ "$1" = "sh" || "$1" == "bash" ]]
+if [[ "$1" = "sh" || "$1" == "bash" || "$1" = "claude" ]]
 then
-	cmd="$1"
+	cmd=("$1")
 	shift
-elif [[ "$1" = "claude" ]]
+elif [[ "$0" == *"/claude" ]]
 then
-	claude_yolo=yes
-	cmd="$1"
-	shift
-elif [[ "$0" == *"/claude" || "$0" == *"/claude-docker" ]]
+	cmd=(claude --permission-mode auto --model opus)
+elif [[ "$0" == *"/claude-docker" || "$0" == *"/claude-yolo" ]]
 then
-	claude_yolo=yes
-	cmd=claude
+	cmd=(claude --dangerously-skip-permissions)
 else
-	cmd=opencode
+	cmd=(opencode)
 fi
 
-if [ -z "$claude_yolo" ]
-then
-	exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" $cmd "$@"
-else
-	exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" $cmd --dangerously-skip-permissions "$@"
-fi
+exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" "${cmd[@]}" "$@"
