@@ -82,6 +82,7 @@ start_dummy_container() {
 		-v "${MOUNT_SRC}:/code-$HASH" \
 		-v "${PARENT_DIR}/claude:/home/dev/.claude" \
 		-v "${PARENT_DIR}/claude.json:/home/dev/.claude.json" \
+		-v "${PARENT_DIR}/env:/home/dev/.env" \
 		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
 		opencode-dev:latest tail -f /dev/null

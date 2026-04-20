@@ -66,6 +66,8 @@ RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash
 
+RUN echo '[ -f ~/.env ] && { set -a; source ~/.env; set +a; }' >> ~/.bashrc
+
 COPY --chown=${DEV_USER}:${DEV_USER} opencode.json ${DEV_HOME}/.config/opencode/
 COPY --chown=${DEV_USER}:${DEV_USER} model.json ${DEV_HOME}/.local/state/opencode/
 COPY --chown=${DEV_USER}:${DEV_USER} gitconfig ${DEV_HOME}/.gitconfig

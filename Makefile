@@ -1,15 +1,19 @@
 IMAGE ?= opencode-dev
 BUILD_OPT ?=
+DEFAULT_FILES = gitconfig model.json opencode.json env
 
 # Detect host architecture and build matching image
 ARCH := $(shell uname -m)
 
 all: build-$(ARCH) yolo-container-net
 
+$(DEFAULT_FILES):
+	touch $@
+
 yolo-container-net:
 	docker network inspect -f OK yolo-container-net || docker network create yolo-container-net
 
-build-%: Dockerfile gitconfig model.json opencode.json entrypoint.sh
+build-%: Dockerfile entrypoint.sh $(DEFAULT_FILES)
 	@arch=$*; \
 	case $$arch in \
 		arm64) NEOVIM_ARCH=arm64 NODE_ARCH=arm64 GO_ARCH=arm64 UBUNTU_DEFAULT_MIRROR=ports.ubuntu.com ;; \
