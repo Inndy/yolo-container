@@ -4,7 +4,10 @@ BUILD_OPT ?=
 # Detect host architecture and build matching image
 ARCH := $(shell uname -m)
 
-all: build-$(ARCH)
+all: build-$(ARCH) yolo-container-net
+
+yolo-container-net:
+	docker network inspect -f OK yolo-container-net || docker network create yolo-container-net
 
 build-%: Dockerfile gitconfig model.json opencode.json entrypoint.sh
 	@arch=$*; \
