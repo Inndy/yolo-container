@@ -92,8 +92,6 @@ start_dummy_container() {
 # Ensure dummy container is up
 ensure_dummy_container
 
-claude_yolo=
-
 if [[ "$1" = "sh" || "$1" == "bash" || "$1" = "claude" ]]
 then
 	cmd=("$1")
