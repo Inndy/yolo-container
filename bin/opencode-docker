@@ -22,6 +22,15 @@ set -e
 # Compute container name based on project hash (same as before)
 CONTAINER_NAME="opencode-$HASH"
 
+# Resolve the repo root (follow symlinks so `claude`/`claude-yolo` symlinks still find the right dir)
+script="$0"
+while [ -L "$script" ]; do
+	dir="$(cd "$(dirname "$script")" && pwd)"
+	script="$(readlink "$script")"
+	[[ "$script" != /* ]] && script="$dir/$script"
+done
+YOLO_REPO_ROOT="$(cd "$(dirname "$script")/.." && pwd)"
+
 is_container_stale() {
 	local current_image_id container_image_id
 	current_image_id=$(docker image inspect opencode-dev:latest --format '{{.Id}}' 2>/dev/null) || return 1
@@ -65,24 +74,19 @@ ensure_dummy_container() {
 }
 
 start_dummy_container() {
-	local script="$0"
-	while [ -L "$script" ]; do
-		local dir="$(cd "$(dirname "$script")" && pwd)"
-		script="$(readlink "$script")"
-		[[ "$script" != /* ]] && script="$dir/$script"
-	done
-	PARENT_DIR="$(cd "$(dirname "$script")/.." && pwd)"
 	# Ensure claude.json exists as a regular file so Docker doesn't create it as a directory
-	[[ -f "${PARENT_DIR}/claude.json" ]] || touch "${PARENT_DIR}/claude.json"
+	[[ -f "${YOLO_REPO_ROOT}/claude.json" ]] || touch "${YOLO_REPO_ROOT}/claude.json"
+	[[ -f "${YOLO_REPO_ROOT}/env" ]] || touch "${YOLO_REPO_ROOT}/env"
+
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
 		--add-host=host.docker.internal:host-gateway \
 		--network yolo-container-net \
 		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
 		-v "${MOUNT_SRC}:/code-$HASH" \
-		-v "${PARENT_DIR}/claude:/home/dev/.claude" \
-		-v "${PARENT_DIR}/claude.json:/home/dev/.claude.json" \
-		-v "${PARENT_DIR}/env:/home/dev/.env" \
+		-v "${YOLO_REPO_ROOT}/claude:/home/dev/.claude" \
+		-v "${YOLO_REPO_ROOT}/claude.json:/home/dev/.claude.json" \
+		-v "${YOLO_REPO_ROOT}/env:/home/dev/.env" \
 		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
 		opencode-dev:latest tail -f /dev/null
@@ -106,4 +110,4 @@ else
 	cmd=(opencode)
 fi
 
-exec docker exec -it --user "$(id -u):$(id -g)" "${CONTAINER_NAME}" "${cmd[@]}" "$@"
+exec docker exec -it --user "$(id -u):$(id -g)" --env-file "${YOLO_REPO_ROOT}/env" "${CONTAINER_NAME}" "${cmd[@]}" "$@"
