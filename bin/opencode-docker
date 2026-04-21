@@ -100,10 +100,10 @@ if [[ "$1" = "sh" || "$1" == "bash" || "$1" = "claude" ]]
 then
 	cmd=("$1")
 	shift
-elif [[ "$0" == *"/claude" ]]
+elif [[ "$0" == *"/claude-docker" || "$0" == *"/claude" ]]
 then
 	cmd=(claude --permission-mode auto --model opus)
-elif [[ "$0" == *"/claude-docker" || "$0" == *"/claude-yolo" ]]
+elif [[ "$0" == *"/claude-yolo" ]]
 then
 	cmd=(claude --dangerously-skip-permissions)
 else
