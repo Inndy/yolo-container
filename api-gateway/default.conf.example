@@ -3,6 +3,10 @@ server {
     listen  [::]:80;
     server_name  localhost default;
 
+	location / {
+		return 200 "It works!\n";
+	}
+
 	# export ANTHROPIC_BASE_URL=http://server/claude/
 	location /claude/ {
 		## ======== BEGIN CORS SUPPORT ========
