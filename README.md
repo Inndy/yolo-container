@@ -75,8 +75,8 @@ The script picks a launch mode based on the name it's invoked as:
 So a typical setup is:
 
 ```bash
-ln -s "$PWD/bin/opencode-docker" ~/bin/claude        # auto mode
-ln -s "$PWD/bin/opencode-docker" ~/bin/claude-yolo   # YOLO mode
+ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude        # auto mode
+ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude-yolo   # YOLO mode
 ```
 
 Any extra arguments you pass on the command line are forwarded to the underlying command.
