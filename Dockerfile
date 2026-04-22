@@ -10,7 +10,8 @@ ARG UBUNTU_MIRROR="mirror.twds.com.tw"
 RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.list.d/ubuntu.sources && \
 	apt update && apt install -y \
 			curl build-essential git mingw-w64 python3 python3-dev python3-pip \
-			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd && \
+			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd \
+			libssl-dev libgmp-dev libffi-dev libyaml-dev libreadline-dev libgdbm-dev autoconf bison && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* && \
 	touch /.ready && chmod 666 /.ready
@@ -57,8 +58,14 @@ ENV PATH="$PATH:${DEV_HOME}/.local/bin"
 ENV IS_SANDBOX=1
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+# Install rust for ruby yjit
+ENV PATH="$PATH:{$DEV_HOME}/.cargo/bin"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
 # Install rbenv
+ENV PATH="$PATH:${DEV_HOME}/.rbenv/bin"
 RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
+	git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build && \
 	~/.rbenv/bin/rbenv init bash
 
 # I'm not using codex personally, but here you go
