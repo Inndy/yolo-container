@@ -65,7 +65,7 @@ ensure_dummy_container() {
 
 		if [ -n "$need_restart" ]
 		then
-			docker kill "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
+			docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
 			start_dummy_container
 		fi
 	else
