@@ -45,28 +45,21 @@ has_active_exec_sessions() {
 }
 
 ensure_dummy_container() {
-	local need_restart=
 	if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 		if is_container_stale; then
+			echo "Warning: Container ${CONTAINER_NAME} uses an outdated image." >&2
 			if has_active_exec_sessions; then
-				echo "Warning: Container ${CONTAINER_NAME} uses an outdated image but has active sessions." >&2
-				read -r -p "Force replace? Active sessions will be terminated. [y/N] " answer
-				if [[ "$answer" =~ ^[Yy]$ ]]; then
-					echo "Replacing container ${CONTAINER_NAME}…"
-					need_restart=1
-				else
-					echo "Continuing with outdated container." >&2
-				fi
-			else
-				echo "Container ${CONTAINER_NAME} uses an outdated image. Replacing…"
-				need_restart=1
+				echo "Warning: There are active sessions running in this container." >&2
 			fi
-		fi
-
-		if [ -n "$need_restart" ]
-		then
-			docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || docker rm -f "${CONTAINER_NAME}" >/dev/null
-			start_dummy_container
+			echo "Warning: Any modifications made inside the container will be destroyed." >&2
+			read -r -p "Replace container? Active sessions will be terminated. [y/N] " answer
+			if [[ "$answer" =~ ^[Yy]$ ]]; then
+				echo "Replacing container ${CONTAINER_NAME}…"
+				docker rm -f "${CONTAINER_NAME}" >/dev/null
+				start_dummy_container
+			else
+				echo "Continuing with outdated container." >&2
+			fi
 		fi
 	else
 		start_dummy_container
