@@ -14,7 +14,7 @@ make arm64    # Explicitly build for ARM64
 make amd64    # Explicitly build for x86_64
 ```
 
-The Makefile sets architecture-specific build args: `NEOVIM_ARCH`, `NODE_ARCH`, `GO_ARCH`, and `UBUNTU_DEFAULT_MIRROR`. It also creates the shared Docker network `yolo-container-net` (via the `yolo-container-net` target) and touches empty placeholder config files (`gitconfig`, `model.json`, `opencode.json`, `env`) if they don't exist.
+The Makefile sets architecture-specific build args: `NEOVIM_ARCH`, `NODE_ARCH`, `GO_ARCH`, and `UBUNTU_DEFAULT_MIRROR`. It also creates the shared Docker network `yolo-internal` (via the `yolo-internal` target — `--internal`, subnet `192.168.10.0/24`, gateway `.1`) and touches empty placeholder config files (`gitconfig`, `model.json`, `opencode.json`, `env`) if they don't exist. The companion `api-gateway/` subproject builds the `llm-gateway` container that sits on this network.
 
 ## Running
 
@@ -44,7 +44,7 @@ Create symlinks in your `$PATH` (e.g. `ln -s .../bin/opencode-docker ~/bin/claud
 - Tracks hash→path mappings in `~/.opencode_map`
 - Detects stale containers (image ID mismatch) and prompts to replace them
 - Checks for active exec sessions before replacing
-- Containers are attached to the `yolo-container-net` Docker network so sibling project containers can reach each other by name; `host.docker.internal` is also mapped to the host gateway
+- Containers are attached to the `yolo-internal` Docker network (`--internal`), so they can reach each other and `llm-gateway` by name but cannot reach the host or external networks directly. Outbound traffic egresses through `llm-gateway` (iptables MASQUERADE + RFC 1918 DROP + nginx reverse-proxy for AI APIs). The container is launched with `--cap-add=NET_ADMIN` and `--dns 8.8.8.8 --dns 1.1.1.1`. `entrypoint.sh` resolves `llm-gateway` via Docker's embedded DNS (always present at `127.0.0.11` on custom networks, regardless of `--dns`) and rewrites the default route to that IP; the explicit upstream DNS servers handle external lookups (forwarded through the router by NAT) since the host's resolver is unreachable on `--internal`
 
 ### Bind Mounts
 | Host Path | Container Path | Purpose |
@@ -58,10 +58,10 @@ Create symlinks in your `$PATH` (e.g. `ln -s .../bin/opencode-docker ~/bin/claud
 `gitconfig`, `opencode.json`, and `model.json` are copied in at build time (not bind-mounted), so rebuild the image after editing them.
 
 ### Env File Auto-Loading
-The Dockerfile appends `[ -f ~/.env ] && { set -a; source ~/.env; set +a; }` to `~/.bashrc`. Any `KEY=VALUE` pair in the host-side `env` file is exported into every shell (and therefore into `opencode` / `claude` when launched from a login-style shell). Use this for API keys and other runtime secrets you don't want baked into the image.
+The Dockerfile appends `[ -f ~/.env ] && { set -a; source ~/.env; set +a; }` to `~/.bashrc`. Any `KEY=VALUE` pair in the host-side `env` file is exported into every shell (and therefore into `opencode` / `claude` when launched from a login-style shell). Real API keys live in `api-gateway/default.conf` (not in `env`); the `env` file should hold a dummy key + `ANTHROPIC_BASE_URL=http://llm-gateway/claude/` so SDKs that demand a key don't error and outbound API traffic flows through the gateway.
 
 ### User Remapping (`entrypoint.sh`)
-The container starts as root. The entrypoint receives `HOST_UID`/`HOST_GID` via environment variables and remaps the `dev` user's UID/GID to match, deleting any conflicting system users/groups (e.g. macOS GID 20 vs Ubuntu's `dialout`). It then `chown`s `/home/dev` and `exec`s the command. All `docker exec` calls use `--user` to run as the remapped UID/GID. The `dev` user has passwordless sudo. A `/.ready` lock file synchronizes: the entrypoint holds an exclusive `flock` during remapping, and `opencode-docker` waits on that lock before issuing the first `exec`.
+The container starts as root. The entrypoint receives `HOST_UID`/`HOST_GID` via environment variables and remaps the `dev` user's UID/GID to match, deleting any conflicting system users/groups (e.g. macOS GID 20 vs Ubuntu's `dialout`). It then `chown`s `/home/dev` and `exec`s the command. All `docker exec` calls use `--user` to run as the remapped UID/GID. The `dev` user has passwordless sudo. A `/.ready` lock file synchronizes: the entrypoint holds an exclusive `flock` during remapping, and `opencode-docker` waits on that lock before issuing the first `exec`. After remapping, the entrypoint resolves `llm-gateway` via Docker's embedded DNS (with `python3 -c 'socket.gethostbyname(...)'`) and rewrites the default route to that IP. Docker's bridge gateway `192.168.10.1` is unreachable on `--internal` networks, so without this rewrite no outbound traffic works.
 
 ### Config Files (Not Committed)
 - `gitconfig` — Personal git configuration

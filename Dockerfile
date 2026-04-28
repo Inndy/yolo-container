@@ -10,7 +10,7 @@ ARG UBUNTU_MIRROR="mirror.twds.com.tw"
 RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.list.d/ubuntu.sources && \
 	apt update && apt install -y \
 			curl build-essential git mingw-w64 python3 python3-dev python3-pip \
-			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd \
+			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd iproute2 \
 			libssl-dev libgmp-dev libffi-dev libyaml-dev libreadline-dev libgdbm-dev autoconf bison && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* && \

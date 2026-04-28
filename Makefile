@@ -5,13 +5,19 @@ DEFAULT_FILES = gitconfig model.json opencode.json env
 # Detect host architecture and build matching image
 ARCH := $(shell uname -m)
 
-all: build-$(ARCH) yolo-container-net
+all: build-$(ARCH) yolo-internal
 
 $(DEFAULT_FILES):
 	touch $@
 
-yolo-container-net:
-	docker network inspect -f OK yolo-container-net || docker network create yolo-container-net
+yolo-internal:
+	docker network inspect -f OK yolo-internal || \
+		docker network create \
+			--internal \
+			--subnet=192.168.10.0/24 \
+			--gateway=192.168.10.1 \
+			--ip-range=192.168.10.128/25 \
+			yolo-internal
 
 build-%: Dockerfile entrypoint.sh $(DEFAULT_FILES)
 	@arch=$*; \

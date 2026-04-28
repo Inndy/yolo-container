@@ -2,7 +2,7 @@
 
 Run [opencode](https://opencode.ai) and [Claude Code](https://claude.ai/code) inside a Docker container. AI coding agents work best when they can freely read, write, and execute — but handing that level of access to an agentic process on your host machine is risky. This project wraps the whole thing in a container so the agent can run uninhibited while your host stays protected.
 
-Each project gets its own persistent container (keyed by git root path). Source code is bind-mounted into the container, and all project containers share a Docker network (`yolo-container-net`) so sibling services can talk to each other.
+Each project gets its own persistent container (keyed by git root path). Source code is bind-mounted into the container. All project containers share a `--internal` Docker network (`yolo-internal`); they can talk to each other but cannot reach the host or any RFC 1918 network directly. Outbound traffic is routed through an `llm-gateway` container (nginx + iptables) which NATs public traffic and reverse-proxies AI APIs with API keys injected, so the project containers never see real keys.
 
 ## Prerequisites
 
@@ -45,7 +45,22 @@ make arm64
 make amd64
 ```
 
-The first build also creates the shared `yolo-container-net` Docker network if it doesn't already exist.
+The first build also creates the shared `yolo-internal` (`--internal`, `192.168.10.0/24`) Docker network if it doesn't already exist. Before launching any project container you also need to build and start the gateway:
+
+```bash
+cd api-gateway
+cp default.conf.example default.conf  # then put your real ANTHROPIC_API_KEY in
+make run
+```
+
+That brings up `llm-gateway` (a single nginx container) attached to both the default `bridge` (WAN) and `yolo-internal` (LAN, fixed IP `192.168.10.2`). It does iptables MASQUERADE for outbound traffic, drops all RFC 1918 destinations from `yolo-internal`, and reverse-proxies `https://api.anthropic.com` at `http://llm-gateway/claude/`.
+
+In your `env` file (host-side, bind-mounted into every project container as `~/.env`), keep a dummy `ANTHROPIC_API_KEY` (some SDKs refuse to run without it being set) and point the SDK at the gateway:
+
+```
+ANTHROPIC_API_KEY=sk-ant-dummy
+ANTHROPIC_BASE_URL=http://llm-gateway/claude/
+```
 
 ## Usage
 
