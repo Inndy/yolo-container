@@ -16,6 +16,8 @@ make amd64    # Explicitly build for x86_64
 
 The Makefile sets architecture-specific build args: `NEOVIM_ARCH`, `NODE_ARCH`, `GO_ARCH`, and `UBUNTU_DEFAULT_MIRROR`. It also creates the shared Docker network `yolo-internal` (via the `yolo-internal` target — `--internal`, subnet `192.168.10.0/24`, gateway `.1`) and touches empty placeholder config files (`gitconfig`, `model.json`, `opencode.json`, `env`) if they don't exist. The companion `api-gateway/` subproject builds the `llm-gateway` container that sits on this network.
 
+The gateway has a build-time toggle `BLOCK_LAN` (default `0`). `make BLOCK_LAN=1 -C api-gateway run` bakes RFC 1918 DROP rules into the image (corporate setups where the agent must not reach the internal LAN). The default `0` allows LAN access — appropriate for single-host / home use. The flag is passed via `--build-arg BLOCK_LAN=...`; the Makefile uses a `FORCE` dep so switching the value always re-invokes `docker build`, with Docker's layer cache skipping unchanged work.
+
 ## Running
 
 ```bash

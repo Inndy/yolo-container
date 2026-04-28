@@ -1,15 +1,24 @@
 all: run
 
+# Build-time toggle for blocking LAN (RFC 1918) access from clients.
+# 0 = allow LAN access (default, home/single-host);
+# 1 = block all RFC 1918 destinations (corporate / multi-tenant network).
+# Switching value forces a rebuild via docker layer cache invalidation
+# on the ARG layer.
+BLOCK_LAN ?= 0
+
 clean:
 	docker network rm yolo-internal
 
-debug:
-	docker build --target debug -t llm-gateway .
+debug: FORCE
+	docker build --target debug --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
 	touch docker-img-ready
 
-docker-img-ready: default.conf Dockerfile 99-iptables.sh
-	docker build --target base -t llm-gateway .
+docker-img-ready: default.conf Dockerfile 99-iptables.sh FORCE
+	docker build --target base --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
 	touch docker-img-ready
+
+FORCE:
 
 default.conf:
 	test -f default.conf || { echo Run \"cp defualt.conf.example defualt.conf\" and put your KEY; exit 1; }
@@ -43,4 +52,4 @@ run: docker-img-ready yolo-internal
 	docker network connect yolo-internal llm-gateway
 	docker start llm-gateway
 
-.PHONY: all run yolo-internal
+.PHONY: all run yolo-internal clean debug FORCE
