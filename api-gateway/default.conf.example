@@ -3,6 +3,8 @@ server {
     listen  [::]:80;
     server_name  localhost default;
 
+	client_max_body_size 2G;
+
 	location / {
 		return 200 "It works!\n";
 	}
