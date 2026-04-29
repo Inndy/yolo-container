@@ -50,7 +50,7 @@ run: docker-img-ready yolo-internal
 		-p 127.0.0.1:33380:80 \
 		--restart unless-stopped \
 		llm-gateway
-	docker network connect yolo-internal llm-gateway
+	docker network connect --ip 192.168.10.2 yolo-internal llm-gateway
 	docker start llm-gateway
 
 .PHONY: all run yolo-internal clean debug FORCE
