@@ -8,6 +8,7 @@ all: run
 BLOCK_LAN ?= 0
 
 clean:
+	docker rm -f llm-gateway
 	docker network rm yolo-internal
 
 debug: FORCE
