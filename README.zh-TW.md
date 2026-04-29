@@ -85,7 +85,7 @@ bin/opencode-docker bash
 |--------------------|-------------------------------------------------|------------|
 | `opencode-docker`  | `opencode`                                      | OpenCode   |
 | `claude`           | `claude --permission-mode auto --model opus`    | 自動模式   |
-| `claude-docker`    | `claude --dangerously-skip-permissions`         | YOLO 模式  |
+| `claude-docker`    | `claude --dangerously-skip-permissions`         | 自動模式   |
 | `claude-yolo`      | `claude --dangerously-skip-permissions`         | YOLO 模式  |
 
 典型設定方式如下：

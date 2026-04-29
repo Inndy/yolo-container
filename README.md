@@ -84,7 +84,7 @@ The script picks a launch mode based on the name it's invoked as:
 |------------------|-------------------------------------------------|------------|
 | `opencode-docker`| `opencode`                                      | OpenCode   |
 | `claude`         | `claude --permission-mode auto --model opus`    | Auto       |
-| `claude-docker`  | `claude --dangerously-skip-permissions`         | YOLO       |
+| `claude-docker`  | `claude --dangerously-skip-permissions`         | Auto       |
 | `claude-yolo`    | `claude --dangerously-skip-permissions`         | YOLO       |
 
 So a typical setup is:
