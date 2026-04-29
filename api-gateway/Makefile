@@ -5,7 +5,7 @@ all: run
 # 1 = block all RFC 1918 destinations (corporate / multi-tenant network).
 # Switching value forces a rebuild via docker layer cache invalidation
 # on the ARG layer.
-BLOCK_LAN ?= 0
+BLOCK_LAN ?= 1
 
 clean:
 	docker rm -f llm-gateway

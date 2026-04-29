@@ -9,7 +9,7 @@ COPY default.conf /etc/nginx/conf.d/default.conf
 COPY 99-iptables.sh /docker-entrypoint.d/99-iptables.sh
 RUN chmod +x /docker-entrypoint.d/99-iptables.sh
 
-ARG BLOCK_LAN=0
+ARG BLOCK_LAN=1
 ENV BLOCK_LAN=$BLOCK_LAN
 
 FROM base AS debug
