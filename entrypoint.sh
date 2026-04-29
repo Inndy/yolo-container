@@ -1,7 +1,7 @@
 #!/bin/bash
 HOST_UID=${HOST_UID:-1000}
 HOST_GID=${HOST_GID:-1000}
-ROUTER_IP=$(python3 -c 'import socket; print(socket.gethostbyname("llm-gateway"))')
+ROUTER_IP=$(getent hosts llm-gateway | awk '{print $1}')
 DEV_UID=$(id -u dev)
 DEV_GID=$(id -g dev)
 NEED_CHOWN=0
