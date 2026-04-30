@@ -1,4 +1,8 @@
 #!/bin/bash
+
+exec 3>/.ready
+flock -x 3
+
 HOST_UID=${HOST_UID:-1000}
 HOST_GID=${HOST_GID:-1000}
 ROUTER_IP=$(getent hosts llm-gateway | awk '{print $1}')
@@ -6,8 +10,14 @@ DEV_UID=$(id -u dev)
 DEV_GID=$(id -g dev)
 NEED_CHOWN=0
 
-exec 3>/.ready
-flock -x 3
+# Override Docker's default route (points at yolo-internal bridge gw .1, which
+# leads nowhere because the network is --internal) so traffic egresses through
+# the llm-gateway nginx/iptables router.
+if [ -n "$ROUTER_IP" ]; then
+	ip route del default 2>/dev/null || true
+	ip route add default via "$ROUTER_IP" 2>/dev/null || \
+		echo "entrypoint: failed to add default route via $ROUTER_IP" >&2
+fi
 
 if [ "$HOST_GID" != "$DEV_GID" ]; then
 	conflict_group=$(getent group "$HOST_GID" | cut -d: -f1)
@@ -29,15 +39,6 @@ fi
 
 if [ "$NEED_CHOWN" = 1 ]; then
 	chown -R "$HOST_UID:$HOST_GID" /home/dev
-fi
-
-# Override Docker's default route (points at yolo-internal bridge gw .1, which
-# leads nowhere because the network is --internal) so traffic egresses through
-# the llm-gateway nginx/iptables router.
-if [ -n "$ROUTER_IP" ]; then
-	ip route del default 2>/dev/null || true
-	ip route add default via "$ROUTER_IP" 2>/dev/null || \
-		echo "entrypoint: failed to add default route via $ROUTER_IP" >&2
 fi
 
 exec 3>&-
