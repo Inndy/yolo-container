@@ -2,7 +2,7 @@
 set -e
 
 WAN_IF=$(ip route show default | awk '/default/{print $5; exit}' | sed -e 's/@.*//')
-LAN_IF=$(ip -o link show | awk -F': ' '/eth/{print $2}' | sed -e 's/@.*//' | grep -v "^${WAN_IF}\$" | head -1)
+LAN_IF=$(ip -o link show | awk -F': ' '{print $2}' | grep '^eth' | sed -e 's/@.*//' | grep -v "^${WAN_IF}\$" | head -1)
 
 if [ -z "$WAN_IF" ] || [ -z "$LAN_IF" ]; then
 	echo "iptables setup: failed to detect interfaces (WAN=$WAN_IF LAN=$LAN_IF)" >&2
