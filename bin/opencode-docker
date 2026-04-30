@@ -78,6 +78,7 @@ start_dummy_container() {
 
 	echo "Launching dummy container ${CONTAINER_NAME}…"
 	docker run --rm -d --name "${CONTAINER_NAME}" \
+		--add-host=host.docker.internal:host-gateway \
 		--network yolo-internal \
 		--cap-add=NET_ADMIN \
 		--dns 8.8.8.8 --dns 1.1.1.1 \
