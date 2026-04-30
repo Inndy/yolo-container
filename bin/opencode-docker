@@ -19,6 +19,11 @@ fi
 # Run docker container with name based on hash
 set -e
 
+if [ -n "$YOLO_DOCKER_CONTEXT" -a -z "$DOCKER_CONTEXT" ]
+then
+	export DOCKER_CONTEXT="$YOLO_DOCKER_CONTEXT"
+fi
+
 # Compute container name based on project hash (same as before)
 CONTAINER_NAME="opencode-$HASH"
 

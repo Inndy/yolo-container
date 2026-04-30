@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **yolo-container** runs OpenCode and Claude Code inside a Docker container with a full multi-language dev environment (Go, Node.js, Python, Ruby via rbenv, Neovim, tmux). The container provides isolation so AI agents can operate freely without risk to the host. Each project gets its own persistent container keyed by its git root path.
 
+## macOS Prerequisite: OrbStack
+
+macOS users must use [OrbStack](https://orbstack.dev/). Docker Desktop's iptables rules interfere with the gateway container's NAT routing and break outbound connectivity regardless of `BLOCK_LAN` setting.
+
+Set `YOLO_DOCKER_CONTEXT` in your shell profile — the Makefile enforces explicit context on macOS:
+
+```bash
+# in ~/.bashrc, ~/.zshrc, or ~/.profile
+export YOLO_DOCKER_CONTEXT=orbstack
+```
+
+After adding the export, reload your profile (or open a new shell) and run `make` as normal.
+
 ## Build Commands
 
 ```bash
@@ -16,7 +29,7 @@ make amd64    # Explicitly build for x86_64
 
 The Makefile sets architecture-specific build args: `NEOVIM_ARCH`, `NODE_ARCH`, `GO_ARCH`, and `UBUNTU_DEFAULT_MIRROR`. It also creates the shared Docker network `yolo-internal` (via the `yolo-internal` target — `--internal`, subnet `192.168.10.0/24`, gateway `.1`) and touches empty placeholder config files (`gitconfig`, `model.json`, `opencode.json`, `env`) if they don't exist. The companion `api-gateway/` subproject builds the `llm-gateway` container that sits on this network.
 
-The gateway has a build-time toggle `BLOCK_LAN` (default `0`). `make BLOCK_LAN=1 -C api-gateway run` bakes RFC 1918 DROP rules into the image (corporate setups where the agent must not reach the internal LAN). The default `0` allows LAN access — appropriate for single-host / home use. The flag is passed via `--build-arg BLOCK_LAN=...`; the Makefile uses a `FORCE` dep so switching the value always re-invokes `docker build`, with Docker's layer cache skipping unchanged work.
+The gateway has a build-time toggle `BLOCK_LAN` (default `1`). `make BLOCK_LAN=0 -C api-gateway run` disables the RFC 1918 DROP rules (single-host / home use where LAN access is acceptable). The default `1` blocks all RFC 1918 destinations. The flag is passed via `--build-arg BLOCK_LAN=...`; the Makefile uses a `FORCE` dep so switching the value always re-invokes `docker build`, with Docker's layer cache skipping unchanged work.
 
 ## Running
 
@@ -46,6 +59,7 @@ Create symlinks in your `$PATH` (e.g. `ln -s .../bin/opencode-docker ~/bin/claud
 - Tracks hash→path mappings in `~/.opencode_map`
 - Detects stale containers (image ID mismatch) and prompts to replace them
 - Checks for active exec sessions before replacing
+- If `YOLO_DOCKER_CONTEXT` is set, all `docker` invocations use `docker --context "$YOLO_DOCKER_CONTEXT"`. This lets you pin the script to a specific Docker context (e.g. `orbstack`) without changing the system-wide active context.
 - Containers are attached to the `yolo-internal` Docker network (`--internal`), so they can reach each other and `llm-gateway` by name but cannot reach the host or external networks directly. Outbound traffic egresses through `llm-gateway` (iptables MASQUERADE + RFC 1918 DROP + nginx reverse-proxy for AI APIs). The container is launched with `--cap-add=NET_ADMIN` and `--dns 8.8.8.8 --dns 1.1.1.1`. `entrypoint.sh` resolves `llm-gateway` via Docker's embedded DNS (always present at `127.0.0.11` on custom networks, regardless of `--dns`) and rewrites the default route to that IP; the explicit upstream DNS servers handle external lookups (forwarded through the router by NAT) since the host's resolver is unreachable on `--internal`
 
 ### Bind Mounts

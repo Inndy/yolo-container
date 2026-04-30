@@ -2,6 +2,14 @@ IMAGE ?= opencode-dev
 BUILD_OPT ?=
 DEFAULT_FILES = gitconfig model.json opencode.json env
 
+ifndef DOCKER_CONTEXT
+ifdef YOLO_DOCKER_CONTEXT
+export DOCKER_CONTEXT := $(YOLO_DOCKER_CONTEXT)
+else ifeq ($(shell uname -s),Darwin)
+$(error macOS: set YOLO_DOCKER_CONTEXT in your shell profile (e.g. export YOLO_DOCKER_CONTEXT=orbstack). OrbStack is required for BLOCK_LAN=1; Docker Desktop works with the default BLOCK_LAN=0)
+endif
+endif
+
 # Detect host architecture and build matching image
 ARCH := $(shell uname -m)
 

@@ -1,11 +1,19 @@
 all: run
 
 # Build-time toggle for blocking LAN (RFC 1918) access from clients.
-# 0 = allow LAN access (default, home/single-host);
-# 1 = block all RFC 1918 destinations (corporate / multi-tenant network).
+# 1 = block all RFC 1918 destinations (default);
+# 0 = allow LAN access (single-host / home use, no internal network exposure risk).
 # Switching value forces a rebuild via docker layer cache invalidation
 # on the ARG layer.
 BLOCK_LAN ?= 1
+
+ifndef DOCKER_CONTEXT
+ifdef YOLO_DOCKER_CONTEXT
+export DOCKER_CONTEXT := $(YOLO_DOCKER_CONTEXT)
+else ifeq ($(shell uname -s),Darwin)
+$(error macOS: set YOLO_DOCKER_CONTEXT in your shell profile (e.g. export YOLO_DOCKER_CONTEXT=orbstack). OrbStack is required for BLOCK_LAN=1; Docker Desktop works with the default BLOCK_LAN=0)
+endif
+endif
 
 clean:
 	docker rm -f llm-gateway

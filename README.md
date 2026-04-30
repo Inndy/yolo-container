@@ -7,6 +7,11 @@ Each project gets its own persistent container (keyed by git root path). Source 
 ## Prerequisites
 
 - Docker
+- **macOS only:** [OrbStack](https://orbstack.dev/) is required. Docker Desktop's iptables rules interfere with the gateway container's NAT routing and break outbound connectivity regardless of `BLOCK_LAN` setting. You must also explicitly set `YOLO_DOCKER_CONTEXT` in your shell profile — the Makefile enforces this:
+  ```bash
+  # in ~/.bashrc, ~/.zshrc, or ~/.profile
+  export YOLO_DOCKER_CONTEXT=orbstack
+  ```
 
 ## Setup
 
@@ -44,6 +49,15 @@ make
 make arm64
 make amd64
 ```
+
+On macOS with OrbStack, add `YOLO_DOCKER_CONTEXT` to your shell profile before building:
+
+```bash
+# in ~/.bashrc, ~/.zshrc, or ~/.profile
+export YOLO_DOCKER_CONTEXT=orbstack
+```
+
+Both `bin/opencode-docker` and the Makefile read this variable and forward all `docker` calls through the specified context. After reloading your profile (or opening a new shell), run `make` as normal.
 
 The first build also creates the shared `yolo-internal` (`--internal`, `192.168.10.0/24`) Docker network if it doesn't already exist. Before launching any project container you also need to build and start the gateway:
 
