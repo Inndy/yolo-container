@@ -47,6 +47,9 @@ RUN userdel -r ubuntu 2>/dev/null; \
 USER ${DEV_USER}
 WORKDIR ${DEV_HOME}
 
+# move npm global dir to $HOME/.local
+RUN npm config set prefix ~/.local
+
 RUN go install honnef.co/go/tools/cmd/staticcheck@latest && \
 	go install github.com/mgechev/revive@latest
 
@@ -68,8 +71,8 @@ RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
 	git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build && \
 	~/.rbenv/bin/rbenv init bash
 
-# I'm not using codex personally, but here you go
-# RUN npm i -g @openai/codex
+# Install codex
+RUN npm i -g @openai/codex
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash
 

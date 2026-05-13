@@ -86,6 +86,7 @@ start_dummy_container() {
 		-v "${MOUNT_SRC}:/code-$HASH" \
 		-v "${YOLO_REPO_ROOT}/claude:/home/dev/.claude" \
 		-v "${YOLO_REPO_ROOT}/claude.json:/home/dev/.claude.json" \
+		-v "${YOLO_REPO_ROOT}/codex:/home/dev/.codex" \
 		-v "${YOLO_REPO_ROOT}/env:/home/dev/.env" \
 		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
 		--workdir /code-"$HASH" \
@@ -100,6 +101,12 @@ if [[ "$1" = "sh" || "$1" == "bash" || "$1" = "claude" ]]
 then
 	cmd=("$1")
 	shift
+elif [[ "$0" == *"/codex-docker" || "$0" == *"/codex" ]]
+then
+	cmd=(codex)
+elif [[ "$0" == *"/codex-yolo" ]]
+then
+	cmd=(codex --yolo)
 elif [[ "$0" == *"/claude-docker" || "$0" == *"/claude" ]]
 then
 	cmd=(claude --permission-mode auto --model opus)
