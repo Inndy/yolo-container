@@ -2,6 +2,7 @@
 
 exec 3>/.ready
 flock -x 3
+printf 'locked\n' >&3
 
 HOST_UID=${HOST_UID:-1000}
 HOST_GID=${HOST_GID:-1000}
