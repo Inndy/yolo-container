@@ -2,7 +2,7 @@
 
 Run [opencode](https://opencode.ai) and [Claude Code](https://claude.ai/code) inside a Docker container. AI coding agents work best when they can freely read, write, and execute — but handing that level of access to an agentic process on your host machine is risky. This project wraps the whole thing in a container so the agent can run uninhibited while your host stays protected.
 
-Each project gets its own persistent container (keyed by git root path). Source code is bind-mounted into the container. All project containers share a `--internal` Docker network (`yolo-internal`); they can talk to each other but cannot reach the host or any RFC 1918 network directly. Outbound traffic is routed through an `llm-gateway` container (nginx + iptables) which NATs public traffic and reverse-proxies AI APIs with API keys injected, so the project containers never see real keys.
+Each project gets its own persistent container (keyed by git root path). Source code is bind-mounted into the container. All project containers share a `--internal` Docker network (`yolo-internal`); they can talk to each other but cannot reach the host or any RFC 1918 network directly. Outbound traffic is routed through an `llm-gateway` container (nginx + iptables) which NATs public traffic and reverse-proxies AI APIs with API keys injected, so the project containers never see real keys. An optional `ccxray` sidecar on the same network transparently proxies Claude Code ↔ Anthropic traffic and serves a live dashboard for inspecting sessions (system prompts, per-call cost, token/context usage).
 
 ## Prerequisites
 
@@ -69,7 +69,28 @@ make run
 
 That brings up `llm-gateway` (a single nginx container) attached to both the default `bridge` (WAN) and `yolo-internal` (LAN, fixed IP `192.168.10.2`). It does iptables MASQUERADE for outbound traffic, drops all RFC 1918 destinations from `yolo-internal`, and reverse-proxies `https://api.anthropic.com` at `http://llm-gateway/claude/`.
 
-In your `env` file (host-side, bind-mounted into every project container as `~/.env`), keep a dummy `ANTHROPIC_API_KEY` (some SDKs refuse to run without it being set) and point the SDK at the gateway:
+### Observability dashboard (ccxray)
+
+The `ccxray` sidecar transparently proxies Claude Code ↔ Anthropic traffic and serves a live dashboard (system prompts, per-call cost, token/context usage). It joins the same `yolo-internal` network, egresses through the gateway NAT, and reads the shared `claude/` transcripts (read-only) for token-usage counting:
+
+```bash
+cd ccxray
+make run
+```
+
+The gateway's nginx reverse-proxies the dashboard, published to the host at <http://127.0.0.1:33390>. ccxray's own logs live in `ccxray-data/`.
+
+### Point Claude Code at the gateway / ccxray
+
+In your `env` file (host-side, bind-mounted into every project container as `~/.env`):
+
+**Team Plan / OAuth login** (recommended) — route through ccxray so sessions appear in the dashboard. Claude Code sends its own OAuth token, which ccxray forwards untouched. Do **not** set `ANTHROPIC_API_KEY` (a set key can shadow OAuth):
+
+```
+ANTHROPIC_BASE_URL=http://ccxray:5577
+```
+
+**API key** — point at the gateway, which injects the real key. Keep a dummy key so SDKs that demand one don't error (this path bypasses the ccxray dashboard):
 
 ```
 ANTHROPIC_API_KEY=sk-ant-dummy

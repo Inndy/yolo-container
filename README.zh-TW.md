@@ -3,7 +3,7 @@
 在 Docker 容器中執行 [opencode](https://opencode.ai) 與 [Claude Code](https://claude.ai/code)。
 AI 程式編寫代理在能夠自由讀取、寫入與執行時效果最佳，但將這種程度的存取權交給主機上的代理程序是有風險的。本專案將整個流程包裝在容器中，讓代理可以不受限制地運作，同時保護你的主機。
 
-每個專案都有自己的持久容器（以 git 根目錄路徑為索引鍵）。原始碼以 bind mount 方式掛載到容器內。所有專案容器共享一個 `--internal` 的 Docker 網路（`yolo-internal`）：彼此能互通，但無法直接連到主機或任何 RFC 1918 內網。對外流量會經過 `llm-gateway` 容器（nginx + iptables），由它做 NAT 轉送公網流量、並反向代理 AI API（注入真正的 API key），所以專案容器看不到真 key。
+每個專案都有自己的持久容器（以 git 根目錄路徑為索引鍵）。原始碼以 bind mount 方式掛載到容器內。所有專案容器共享一個 `--internal` 的 Docker 網路（`yolo-internal`）：彼此能互通，但無法直接連到主機或任何 RFC 1918 內網。對外流量會經過 `llm-gateway` 容器（nginx + iptables），由它做 NAT 轉送公網流量、並反向代理 AI API（注入真正的 API key），所以專案容器看不到真 key。另有一個選用的 `ccxray` sidecar 位於同一網路，會透明代理 Claude Code 與 Anthropic 之間的流量，並提供即時儀表板以檢視 session（系統提示、每次呼叫成本、token/context 用量）。
 
 ## 前置需求
 
@@ -70,7 +70,28 @@ make run
 
 這會啟動 `llm-gateway`（單一 nginx 容器），同時接 `bridge`（WAN）與 `yolo-internal`（LAN，固定 IP `192.168.10.2`）。它負責對外流量的 iptables MASQUERADE、把 `yolo-internal` 出來的所有 RFC 1918 目的位址 DROP 掉，並把 `https://api.anthropic.com` 反向代理到 `http://llm-gateway/claude/`。
 
-在 host 端的 `env` 檔（會 bind mount 進每個專案容器的 `~/.env`）裡，保留一個 dummy `ANTHROPIC_API_KEY`（某些 SDK 沒看到 key 會直接拒絕啟動），然後把 SDK 指向 gateway：
+### 觀測儀表板（ccxray）
+
+`ccxray` sidecar 會透明代理 Claude Code 與 Anthropic 之間的流量，並提供即時儀表板（系統提示、每次呼叫成本、token/context 用量）。它加入同一個 `yolo-internal` 網路、透過 gateway NAT 對外，並以唯讀方式讀取共用的 `claude/` 對話記錄來統計 token 用量：
+
+```bash
+cd ccxray
+make run
+```
+
+gateway 的 nginx 會反向代理此儀表板，發佈到 host 的 <http://127.0.0.1:33390>。ccxray 自己的記錄存放於 `ccxray-data/`。
+
+### 將 Claude Code 指向 gateway 或 ccxray
+
+在 host 端的 `env` 檔（會 bind mount 進每個專案容器的 `~/.env`）裡：
+
+**Team Plan／OAuth 登入**（建議）— 走 ccxray，讓 session 出現在儀表板。Claude Code 會送出自己的 OAuth token，ccxray 原封不動地轉發。請**不要**設定 `ANTHROPIC_API_KEY`（設了可能會蓋掉 OAuth）：
+
+```
+ANTHROPIC_BASE_URL=http://ccxray:5577
+```
+
+**API key** — 指向 gateway，由它注入真正的 key。保留一個 dummy key，避免某些 SDK 因缺 key 而拒絕啟動（此路徑不會經過 ccxray 儀表板）：
 
 ```
 ANTHROPIC_API_KEY=sk-ant-dummy
