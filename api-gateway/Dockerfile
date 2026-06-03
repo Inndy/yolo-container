@@ -6,6 +6,7 @@ RUN apt-get update && \
 	rm -rf /var/lib/apt/lists/*
 
 COPY default.conf /etc/nginx/conf.d/default.conf
+COPY ccxray.conf /etc/nginx/conf.d/ccxray.conf
 COPY 99-iptables.sh /docker-entrypoint.d/99-iptables.sh
 RUN chmod +x /docker-entrypoint.d/99-iptables.sh
 

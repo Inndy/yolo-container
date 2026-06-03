@@ -23,7 +23,7 @@ debug: FORCE
 	docker build --target debug --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
 	touch docker-img-ready
 
-docker-img-ready: default.conf Dockerfile 99-iptables.sh FORCE
+docker-img-ready: default.conf ccxray.conf Dockerfile 99-iptables.sh FORCE
 	docker build --target base --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
 	touch docker-img-ready
 
@@ -56,6 +56,7 @@ run: docker-img-ready yolo-internal
 		--cap-add=NET_ADMIN \
 		--sysctl net.ipv4.ip_forward=1 \
 		-p 127.0.0.1:33380:80 \
+		-p 127.0.0.1:33390:33390 \
 		--restart unless-stopped \
 		llm-gateway
 	docker network connect --ip 192.168.10.2 yolo-internal llm-gateway
