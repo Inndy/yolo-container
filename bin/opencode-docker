@@ -1,150 +1,36 @@
 #!/usr/bin/env bash
+#
+# Compatibility shim. The launcher is now bin/yo; new usage should call `yo`
+# directly (yo claude / yo -y / yo sh / yo status …). This script only exists so
+# the legacy symlink interface keeps working: symlink it as `claude`,
+# `claude-docker`, `claude-yolo`, `codex`, `codex-docker`, `codex-yolo`, or
+# `opencode-docker` and it forwards to the matching `yo` invocation.
+#
+# See README.md / CLAUDE.md for the mapping.
 
-# Determine git root and compute hash
-if git rev-parse --show-toplevel >/dev/null 2>&1; then
-	GIT_ROOT=$(git rev-parse --show-toplevel)
-	HASH=$(echo -n "$GIT_ROOT" | sha1sum | cut -c1-8)
-	MOUNT_SRC="$GIT_ROOT"
-else
-	HASH=$(echo -n "$PWD" | sha1sum | cut -c1-8)
-	MOUNT_SRC="$PWD"
-fi
-
-hash_name_map_file=~/.opencode_map
-if ! grep -q "^opencode-$HASH:" "$hash_name_map_file" 2>/dev/null
-then
-	echo "opencode-$HASH:$MOUNT_SRC" >> "$hash_name_map_file"
-fi
-
-# Run docker container with name based on hash
 set -e
 
-if [ -n "$YOLO_DOCKER_CONTEXT" -a -z "$DOCKER_CONTEXT" ]
-then
-	export DOCKER_CONTEXT="$YOLO_DOCKER_CONTEXT"
-fi
-
-# Compute container name based on project hash (same as before)
-CONTAINER_NAME="opencode-$HASH"
-
-# Resolve the repo root (follow symlinks so `claude`/`claude-yolo` symlinks still find the right dir)
+# Resolve bin/yo next to this (possibly symlinked) script.
 script="$0"
 while [ -L "$script" ]; do
 	dir="$(cd "$(dirname "$script")" && pwd)"
 	script="$(readlink "$script")"
 	[[ "$script" != /* ]] && script="$dir/$script"
 done
-YOLO_REPO_ROOT="$(cd "$(dirname "$script")/.." && pwd)"
+YO="$(cd "$(dirname "$script")" && pwd)/yo"
 
-is_container_stale() {
-	local current_image_id container_image_id
-	current_image_id=$(docker image inspect opencode-dev:latest --format '{{.Id}}' 2>/dev/null) || return 1
-	container_image_id=$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null) || return 1
-	[[ "$current_image_id" != "$container_image_id" ]]
-}
+# A `sh`/`bash`/`claude` first argument takes precedence over the invoked name,
+# matching the legacy dispatch order.
+case "${1:-}" in
+	sh|bash) shell="$1"; shift; exec "$YO" exec "$shell" "$@" ;;
+	claude)  shift;             exec "$YO" --safe claude "$@" ;;
+esac
 
-has_active_exec_sessions() {
-	local exec_ids
-	exec_ids=$(docker inspect --format '{{json .ExecIDs}}' "$CONTAINER_NAME" 2>/dev/null)
-	[[ "$exec_ids" != "null" && -n "$exec_ids" ]]
-}
-
-wait_for_container_ready() {
-	local timeout_seconds=${YOLO_CONTAINER_READY_TIMEOUT:-30}
-
-	if docker exec "$CONTAINER_NAME" timeout "$timeout_seconds" bash -lc '
-		set -e
-		coproc ready_tail { tail -n +1 -f /.ready; }
-		trap '"'"'kill "$ready_tail_PID" 2>/dev/null || true'"'"' EXIT
-
-		while IFS= read -r line <&"${ready_tail[0]}"; do
-			if [ "$line" = locked ]; then
-				flock -x /.ready -c true
-				exit 0
-			fi
-		done
-
-		exit 1
-	'; then
-		return 0
-	fi
-
-	echo "Error: container ${CONTAINER_NAME} did not finish initialization within ${timeout_seconds}s." >&2
-	echo "The entrypoint may be stuck before releasing the /.ready lock." >&2
-	echo "Recent container logs:" >&2
-	docker logs --tail 50 "$CONTAINER_NAME" >&2 || true
-	return 1
-}
-
-ensure_dummy_container() {
-	if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-		if is_container_stale; then
-			echo "Warning: Container ${CONTAINER_NAME} uses an outdated image." >&2
-			if has_active_exec_sessions; then
-				echo "Warning: There are active sessions running in this container." >&2
-			fi
-			echo "Warning: Any modifications made inside the container will be destroyed." >&2
-			read -r -p "Replace container? Active sessions will be terminated. [y/N] " answer
-			if [[ "$answer" =~ ^[Yy]$ ]]; then
-				echo "Replacing container ${CONTAINER_NAME}…"
-				docker rm -f "${CONTAINER_NAME}" >/dev/null
-				start_dummy_container
-			else
-				echo "Continuing with outdated container." >&2
-			fi
-		fi
-	else
-		start_dummy_container
-	fi
-}
-
-start_dummy_container() {
-	# Ensure claude.json exists as a regular file so Docker doesn't create it as a directory
-	[[ -f "${YOLO_REPO_ROOT}/claude.json" ]] || touch "${YOLO_REPO_ROOT}/claude.json"
-	[[ -f "${YOLO_REPO_ROOT}/env" ]] || touch "${YOLO_REPO_ROOT}/env"
-	mkdir -p "${YOLO_REPO_ROOT}"/{claude,codex}
-
-	echo "Launching dummy container ${CONTAINER_NAME}…"
-	docker run --rm -d --name "${CONTAINER_NAME}" \
-		--add-host=host.docker.internal:host-gateway \
-		--network yolo-internal \
-		--cap-add=NET_ADMIN \
-		--dns 8.8.8.8 --dns 1.1.1.1 \
-		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-		-v "${MOUNT_SRC}:/code-$HASH" \
-		-v "${YOLO_REPO_ROOT}/claude:/home/dev/.claude" \
-		-v "${YOLO_REPO_ROOT}/claude.json:/home/dev/.claude.json" \
-		-v "${YOLO_REPO_ROOT}/codex:/home/dev/.codex" \
-		-v "${YOLO_REPO_ROOT}/env:/home/dev/.env" \
-		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
-		--workdir /code-"$HASH" \
-		opencode-dev:latest tail -f /dev/null
-	wait_for_container_ready
-}
-
-# Ensure dummy container is up
-ensure_dummy_container
-
-if [[ "$1" = "sh" || "$1" == "bash" || "$1" = "claude" ]]
-then
-	cmd=("$1")
-	shift
-elif [[ "$0" == *"/codex-docker" || "$0" == *"/codex" ]]
-then
-	cmd=(codex)
-elif [[ "$0" == *"/codex-yolo" ]]
-then
-	cmd=(codex --yolo)
-elif [[ "$0" == *"/claude-docker" || "$0" == *"/claude" ]]
-then
-	cmd=(claude --permission-mode auto --model opus)
-elif [[ "$0" == *"/claude-yolo" ]]
-then
-	cmd=(claude --dangerously-skip-permissions)
-else
-	cmd=(opencode)
-fi
-
-exec docker exec -it --user "$(id -u):$(id -g)" --env-file "${YOLO_REPO_ROOT}/env" "${CONTAINER_NAME}" "${cmd[@]}" "$@"
-
-# vim: set et! :
+# Otherwise pick tool + mode from the name the script was invoked as.
+case "$0" in
+	*/codex-docker|*/codex)    exec "$YO" codex "$@" ;;
+	*/codex-yolo)              exec "$YO" -y codex "$@" ;;
+	*/claude-docker|*/claude)  exec "$YO" -m opus claude "$@" ;;
+	*/claude-yolo)             exec "$YO" -y claude "$@" ;;
+	*)                         exec "$YO" opencode "$@" ;;
+esac

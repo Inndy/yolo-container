@@ -34,29 +34,35 @@ The gateway has a build-time toggle `BLOCK_LAN` (default `1`). `make BLOCK_LAN=0
 ## Running
 
 ```bash
-bin/opencode-docker          # Launch OpenCode in a project container
-bin/opencode-docker claude   # Launch Claude Code inside the container (raw `claude`, no flags)
-bin/opencode-docker sh       # Open a shell in the container
+bin/yo            # Launch Claude Code, auto mode (default tool + mode)
+bin/yo -y         # YOLO mode (skip permission prompts)
+bin/yo codex      # Launch Codex instead;  bin/yo opencode for OpenCode
+bin/yo sh         # Open a shell in the container
+bin/yo status     # Container state / image / staleness; also: ls, reset, stop
 ```
 
-### Symlink behavior
+### Tool and mode selection
 
-The launch mode is selected by the script's invoked name:
+`bin/yo` takes the tool and permission mode as arguments rather than dispatching
+on its invoked name:
 
-| Invoked as          | Default command                                 | Meaning      |
-|---------------------|-------------------------------------------------|--------------|
-| `opencode-docker`   | `opencode`                                      | OpenCode     |
-| `claude`            | `claude --permission-mode auto --model opus`    | Auto mode    |
-| `claude-docker`     | `claude --dangerously-skip-permissions`         | YOLO mode    |
-| `claude-yolo`       | `claude --dangerously-skip-permissions`         | YOLO mode    |
+- **Tool** (positional): `claude` (default) · `codex` · `opencode`.
+- **Mode**: `--safe` (prompt for everything) · `--auto` (default) · `-y`/`--yolo` (skip prompts). Each maps to the right per-tool flags, e.g. claude auto → `--permission-mode auto`, claude yolo → `--dangerously-skip-permissions`, codex yolo → `--yolo`.
+- **Model**: `-m, --model NAME` (default unset).
 
-Create symlinks in your `$PATH` (e.g. `ln -s .../bin/opencode-docker ~/bin/claude`) to pick a mode.
+Defaults come from `YOLO_TOOL` / `YOLO_MODE` / `YOLO_MODEL`; resolution is **CLI flag > env var > built-in**. Anything after the tool name is forwarded to the agent verbatim.
+
+### Legacy symlink shim (`bin/opencode-docker`)
+
+`bin/opencode-docker` is a thin compatibility shim that forwards to `bin/yo`,
+preserving the old name-based interface. The invoked name selects the equivalent `yo` call: `claude`/`claude-docker` → `yo -m opus claude`, `claude-yolo` → `yo -y claude`, `codex`/`codex-docker` → `yo codex`, `codex-yolo` → `yo -y codex`, `opencode-docker` → `yo opencode`. A leading `sh`/`bash`/`claude` argument still takes precedence over the name (→ `yo exec sh`/`yo exec bash`/`yo --safe claude`). New setups should symlink `bin/yo` directly.
 
 ## Architecture
 
-### Container Lifecycle (`bin/opencode-docker`)
-- Computes a SHA1 hash of the project's git root path to uniquely name each container (`opencode-<hash>`)
-- Tracks hash→path mappings in `~/.opencode_map`
+### Container Lifecycle (`bin/yo`)
+(`bin/opencode-docker` is a compatibility shim that forwards to `bin/yo` — see Running → Legacy symlink shim.)
+- Computes a SHA1 hash of the project's git root path to uniquely name each container (`yolo-dev-<hash>`; prefix overridable via `YOLO_CONTAINER_PREFIX`)
+- Tracks hash→path mappings in `~/.yolocontainer_map`
 - Detects stale containers (image ID mismatch) and prompts to replace them
 - Checks for active exec sessions before replacing
 - If `YOLO_DOCKER_CONTEXT` is set, all `docker` invocations use `docker --context "$YOLO_DOCKER_CONTEXT"`. This lets you pin the script to a specific Docker context (e.g. `orbstack`) without changing the system-wide active context.
@@ -86,7 +92,7 @@ Create symlinks in your `$PATH` (e.g. `ln -s .../bin/opencode-docker ~/bin/claud
 The Dockerfile appends `[ -f ~/.env ] && { set -a; source ~/.env; set +a; }` to `~/.bashrc`. Any `KEY=VALUE` pair in the host-side `env` file is exported into every shell (and therefore into `opencode` / `claude` when launched from a login-style shell). Real API keys live in `api-gateway/default.conf` (not in `env`). For Team Plan / OAuth login (the default), point Claude Code at the ccxray sidecar with `ANTHROPIC_BASE_URL=http://ccxray:5577` and set no `ANTHROPIC_API_KEY` (a key can shadow OAuth); ccxray forwards the OAuth token straight to Anthropic and captures the session. For API-key auth, instead set a dummy `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL=http://llm-gateway/claude/` so the gateway injects the real key (this path bypasses the ccxray dashboard).
 
 ### User Remapping (`entrypoint.sh`)
-The container starts as root. The entrypoint receives `HOST_UID`/`HOST_GID` via environment variables and remaps the `dev` user's UID/GID to match, deleting any conflicting system users/groups (e.g. macOS GID 20 vs Ubuntu's `dialout`). It then `chown`s `/home/dev` and `exec`s the command. All `docker exec` calls use `--user` to run as the remapped UID/GID. The `dev` user has passwordless sudo. A `/.ready` lock file synchronizes: the entrypoint holds an exclusive `flock` during remapping, and `opencode-docker` waits on that lock before issuing the first `exec`. After remapping, the entrypoint resolves `llm-gateway` via Docker's embedded DNS (with `getenv hosts ...`) and rewrites the default route to that IP. Docker's bridge gateway `192.168.10.1` is unreachable on `--internal` networks, so without this rewrite no outbound traffic works.
+The container starts as root. The entrypoint receives `HOST_UID`/`HOST_GID` via environment variables and remaps the `dev` user's UID/GID to match, deleting any conflicting system users/groups (e.g. macOS GID 20 vs Ubuntu's `dialout`). It then `chown`s `/home/dev` and `exec`s the command. All `docker exec` calls use `--user` to run as the remapped UID/GID. The `dev` user has passwordless sudo. A `/.ready` lock file synchronizes: the entrypoint holds an exclusive `flock` during remapping, and `yo` waits on that lock before issuing the first `exec`. After remapping, the entrypoint resolves `llm-gateway` via Docker's embedded DNS (with `getenv hosts ...`) and rewrites the default route to that IP. Docker's bridge gateway `192.168.10.1` is unreachable on `--internal` networks, so without this rewrite no outbound traffic works.
 
 ### Config Files (Not Committed)
 - `gitconfig` — Personal git configuration

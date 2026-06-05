@@ -57,7 +57,7 @@ On macOS with OrbStack, add `YOLO_DOCKER_CONTEXT` to your shell profile before b
 export YOLO_DOCKER_CONTEXT=orbstack
 ```
 
-Both `bin/opencode-docker` and the Makefile read this variable and forward all `docker` calls through the specified context. After reloading your profile (or opening a new shell), run `make` as normal.
+Both `bin/yo` and the Makefile read this variable and forward all `docker` calls through the specified context. After reloading your profile (or opening a new shell), run `make` as normal.
 
 The first build also creates the shared `yolo-internal` (`--internal`, `192.168.10.0/24`) Docker network if it doesn't already exist. Before launching any project container you also need to build and start the gateway:
 
@@ -99,36 +99,66 @@ ANTHROPIC_BASE_URL=http://llm-gateway/claude/
 
 ## Usage
 
-```bash
-# Launch opencode (default)
-bin/opencode-docker
+`bin/yo` is the launcher. It runs an AI agent inside this project's sandbox
+container; the tool and permission mode are arguments, not the script's name.
 
-# Launch Claude Code inside the container (raw `claude`, no flags)
-bin/opencode-docker claude
+```bash
+# Launch Claude Code, auto mode (the default tool + mode)
+bin/yo
+
+# YOLO mode — skip permission prompts
+bin/yo -y
+
+# Other tools (still pick a mode with --safe / --auto / -y)
+bin/yo codex
+bin/yo opencode
 
 # Open a shell in the container
-bin/opencode-docker sh
-bin/opencode-docker bash
+bin/yo sh
+
+# Manage this project's container
+bin/yo status      # state, image, staleness
+bin/yo ls          # all yo containers (project path -> container)
+bin/yo reset       # recreate (e.g. after a fresh `make`)
+bin/yo stop        # stop and remove
 ```
 
-### Claude launch modes via symlink
+Everything **after** the tool name is forwarded verbatim to the agent, e.g.
+`bin/yo claude --resume` runs `claude --resume` inside the container.
 
-The script picks a launch mode based on the name it's invoked as:
+### Tools and modes
 
-| Symlink name     | Runs                                            | Mode       |
-|------------------|-------------------------------------------------|------------|
-| `opencode-docker`| `opencode`                                      | OpenCode   |
-| `claude`         | `claude --permission-mode auto --model opus`    | Auto       |
-| `claude-docker`  | `claude --dangerously-skip-permissions`         | Auto       |
-| `claude-yolo`    | `claude --dangerously-skip-permissions`         | YOLO       |
+| Concept | Values | Default |
+|---------|--------|---------|
+| Tool    | `claude` · `codex` · `opencode` | `claude` |
+| Mode    | `--safe` (prompt for everything) · `--auto` · `-y`/`--yolo` (skip prompts) | `auto` |
+| Model   | `-m, --model NAME` | unset |
 
-So a typical setup is:
+Each maps to the right flags per tool — e.g. `claude` auto → `claude --permission-mode auto`,
+`claude` yolo → `claude --dangerously-skip-permissions`, `codex` yolo → `codex --yolo`.
+Defaults come from `YOLO_TOOL` / `YOLO_MODE` / `YOLO_MODEL` env vars (set them in
+your shell profile next to `YOLO_DOCKER_CONTEXT`); resolution is **CLI flag > env var > built-in**.
+
+The launcher automatically detects and replaces containers running on an outdated image. If active sessions are running, it will prompt before replacing.
+
+### Legacy symlink interface (`bin/opencode-docker`)
+
+`bin/opencode-docker` is kept as a thin compatibility shim that forwards to `yo`,
+so older symlink-name setups keep working. Symlink it into your `$PATH` under one
+of these names:
+
+| Symlink name      | Forwards to            | Equivalent of                                   |
+|-------------------|------------------------|-------------------------------------------------|
+| `opencode-docker` | `yo opencode`          | `opencode`                                       |
+| `claude`          | `yo -m opus claude`    | `claude --permission-mode auto --model opus`     |
+| `claude-docker`   | `yo -m opus claude`    | `claude --permission-mode auto --model opus`     |
+| `claude-yolo`     | `yo -y claude`         | `claude --dangerously-skip-permissions`          |
+| `codex` / `codex-docker` | `yo codex`      | `codex`                                          |
+| `codex-yolo`      | `yo -y codex`          | `codex --yolo`                                   |
 
 ```bash
 ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude        # auto mode
 ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude-yolo   # YOLO mode
 ```
 
-Any extra arguments you pass on the command line are forwarded to the underlying command.
-
-The wrapper automatically detects and replaces containers running on an outdated image. If active sessions are running, it will prompt before replacing.
+New setups should symlink `bin/yo` directly and pass the mode as an argument.

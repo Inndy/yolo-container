@@ -58,7 +58,7 @@ macOS 使用者在建置前，必須先把 `YOLO_DOCKER_CONTEXT` 加到 shell pr
 export YOLO_DOCKER_CONTEXT=orbstack
 ```
 
-`bin/opencode-docker` 與 Makefile 都會讀取此變數，並把所有 `docker` 呼叫導向指定的 context。重新載入 profile（或開新 shell）後，照常執行 `make` 即可。
+`bin/yo` 與 Makefile 都會讀取此變數，並把所有 `docker` 呼叫導向指定的 context。重新載入 profile（或開新 shell）後，照常執行 `make` 即可。
 
 第一次建置時，若 `yolo-internal` Docker 網路（`--internal`、`192.168.10.0/24`）不存在，也會一併建立。在啟動任何專案容器之前，還必須先建好 gateway：
 
@@ -100,36 +100,65 @@ ANTHROPIC_BASE_URL=http://llm-gateway/claude/
 
 ## 使用方式
 
-```bash
-# 啟動 opencode（預設）
-bin/opencode-docker
+啟動器是 `bin/yo`。它會在此專案的沙箱容器內執行 AI agent；工具與權限模式是
+**參數**，而非腳本名稱。
 
-# 在容器內啟動 Claude Code（原始 `claude`，不帶任何旗標）
-bin/opencode-docker claude
+```bash
+# 啟動 Claude Code，自動模式（預設工具＋模式）
+bin/yo
+
+# YOLO 模式 — 跳過所有權限提示
+bin/yo -y
+
+# 其他工具（一樣可用 --safe / --auto / -y 選模式）
+bin/yo codex
+bin/yo opencode
 
 # 在容器中開啟 shell
-bin/opencode-docker sh
-bin/opencode-docker bash
+bin/yo sh
+
+# 管理此專案的容器
+bin/yo status      # 狀態、映像檔、是否過期
+bin/yo ls          # 列出所有 yo 容器（專案路徑 -> 容器）
+bin/yo reset       # 重建（例如剛 `make` 完之後）
+bin/yo stop        # 停止並移除
 ```
 
-### 透過符號連結選擇 Claude 啟動模式
+工具名稱**後面**的所有參數都會原封不動轉發給 agent，例如
+`bin/yo claude --resume` 會在容器內執行 `claude --resume`。
 
-腳本依據被呼叫時的名稱來選擇啟動模式：
+### 工具與模式
 
-| 符號連結名稱       | 執行指令                                        | 模式       |
-|--------------------|-------------------------------------------------|------------|
-| `opencode-docker`  | `opencode`                                      | OpenCode   |
-| `claude`           | `claude --permission-mode auto --model opus`    | 自動模式   |
-| `claude-docker`    | `claude --dangerously-skip-permissions`         | 自動模式   |
-| `claude-yolo`      | `claude --dangerously-skip-permissions`         | YOLO 模式  |
+| 項目 | 可選值 | 預設 |
+|------|--------|------|
+| 工具 | `claude`／`codex`／`opencode` | `claude` |
+| 模式 | `--safe`（每件事都詢問）／`--auto`／`-y`、`--yolo`（跳過提示） | `auto` |
+| 模型 | `-m, --model NAME` | 未設定 |
 
-典型設定方式如下：
+每種組合都會對應到該工具正確的旗標，例如 `claude` auto → `claude --permission-mode auto`、
+`claude` yolo → `claude --dangerously-skip-permissions`、`codex` yolo → `codex --yolo`。
+預設值取自 `YOLO_TOOL`／`YOLO_MODE`／`YOLO_MODEL` 環境變數（與 `YOLO_DOCKER_CONTEXT`
+放在同一處的 shell profile 即可）；解析順序為 **CLI 旗標 > 環境變數 > 內建預設**。
+
+啟動器會自動偵測並替換執行中的舊版映像檔容器。若有正在進行的 session，替換前會先詢問確認。
+
+### 舊版符號連結介面（`bin/opencode-docker`）
+
+`bin/opencode-docker` 保留為轉發給 `yo` 的精簡相容 shim，讓舊有的符號連結命名方式
+繼續可用。把它以下列其中一個名稱符號連結進 `$PATH`：
+
+| 符號連結名稱            | 轉發為              | 等同於                                          |
+|-------------------------|---------------------|-------------------------------------------------|
+| `opencode-docker`       | `yo opencode`       | `opencode`                                       |
+| `claude`                | `yo -m opus claude` | `claude --permission-mode auto --model opus`     |
+| `claude-docker`         | `yo -m opus claude` | `claude --permission-mode auto --model opus`     |
+| `claude-yolo`           | `yo -y claude`      | `claude --dangerously-skip-permissions`          |
+| `codex`／`codex-docker` | `yo codex`          | `codex`                                          |
+| `codex-yolo`            | `yo -y codex`       | `codex --yolo`                                   |
 
 ```bash
 ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude        # 自動模式
 ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude-yolo   # YOLO 模式
 ```
 
-命令列傳入的任何額外參數都會轉發給底層指令。
-
-腳本會自動偵測並替換執行中的舊版映像檔容器。若有正在進行的 session，替換前會先詢問確認。
+新的設定建議直接符號連結 `bin/yo`，並把模式當成參數傳入。
