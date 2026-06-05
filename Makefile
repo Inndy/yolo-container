@@ -1,4 +1,4 @@
-IMAGE ?= opencode-dev
+IMAGE ?= yolo-container-dev
 BUILD_OPT ?=
 DEFAULT_FILES = gitconfig model.json opencode.json env
 

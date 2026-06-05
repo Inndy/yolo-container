@@ -1,0 +1,372 @@
+#!/usr/bin/env bash
+#
+# yo — run an AI coding agent inside this project's sandbox container.
+#
+# Replaces the old name-based dispatch (bin/opencode-docker, which branched on
+# $0 + symlinks). Tool and permission mode are arguments, not filenames.
+#
+# Defaults come from YOLO_* env vars (set them in your shell profile, the same
+# place as YOLO_DOCKER_CONTEXT). Resolution is: CLI flag > env var > built-in.
+#
+#   YOLO_TOOL    claude | codex | opencode   (default claude)
+#   YOLO_MODE    safe | auto | yolo           (default auto)
+#   YOLO_MODEL   model name                   (default unset -> no --model)
+#   YOLO_DOCKER_CONTEXT     docker context to pin every `docker` call to
+#   YOLO_CONTAINER_PREFIX   container name prefix (default yolo-dev-)
+
+set -e
+
+die() { echo "yo: $*" >&2; exit 1; }
+
+usage() {
+	cat <<'EOF'
+yo — run an AI coding agent inside this project's sandbox container
+
+USAGE
+  yo [options] [tool] [agent args...]    launch an agent (default tool: claude)
+  yo <command> [args]                    manage the project's container
+
+  yo options come BEFORE the tool name. Everything AFTER the tool is forwarded
+  to the agent verbatim, e.g.  yo -y claude --resume   →   claude --resume.
+
+TOOLS          claude (default) | codex | opencode
+
+LAUNCH OPTIONS  (permission mode: safe < auto < yolo)
+  -y, --yolo         yolo  — skip permission prompts
+                     (claude: --dangerously-skip-permissions, codex: --yolo)
+      --auto         auto  — claude: --permission-mode auto
+      --safe         safe  — prompt for everything (claude default)
+  -m, --model NAME   model override; maps to --model for all tools
+  -C, --context CTX  docker context (default $YOLO_DOCKER_CONTEXT)
+  --                 stop parsing; forward the rest to the agent (optional —
+                     args after the tool are forwarded anyway)
+
+CONTAINER COMMANDS
+  sh, bash           interactive shell in the container
+  exec CMD...        run a one-off command in the container
+  status             show this project's container (state, image, staleness)
+  reset              throw away & recreate the container (e.g. after `make`)
+  stop               stop and remove the container
+  ls                 list all yo containers (project path -> container)
+  help               show this help
+
+DEFAULTS (env vars; CLI flag > env var > built-in)
+  YOLO_TOOL=claude   YOLO_MODE=auto   YOLO_MODEL=<unset>
+  YOLO_DOCKER_CONTEXT=<unset>   YOLO_CONTAINER_PREFIX=yolo-dev-
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Container lifecycle (ported from bin/opencode-docker, behavior unchanged).
+# yo names its containers "${YOLO_CONTAINER_PREFIX:-yolo-dev-}<hash>", distinct
+# from the old launcher's "opencode-<hash>", so the two don't share containers.
+# yo tracks its own hash->path map in ~/.yolocontainer_map.
+# ---------------------------------------------------------------------------
+
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+	GIT_ROOT=$(git rev-parse --show-toplevel)
+	HASH=$(echo -n "$GIT_ROOT" | sha1sum | cut -c1-8)
+	MOUNT_SRC="$GIT_ROOT"
+else
+	HASH=$(echo -n "$PWD" | sha1sum | cut -c1-8)
+	MOUNT_SRC="$PWD"
+fi
+
+hash_name_map_file=~/.yolocontainer_map
+CONTAINER_PREFIX="${YOLO_CONTAINER_PREFIX:-yolo-dev-}"
+CONTAINER_NAME="${CONTAINER_PREFIX}${HASH}"
+IMAGE="${YOLO_IMAGE:-yolo-container-dev:latest}"
+
+# Resolve the repo root (follow symlinks so an aliased/symlinked yo still finds
+# the right mounts) — claude/, codex/, env, claude.json live under it.
+script="$0"
+while [ -L "$script" ]; do
+	dir="$(cd "$(dirname "$script")" && pwd)"
+	script="$(readlink "$script")"
+	[[ "$script" != /* ]] && script="$dir/$script"
+done
+YOLO_REPO_ROOT="$(cd "$(dirname "$script")/.." && pwd)"
+
+# 0 = stale, 1 = up to date (or no container), 2 = image not built.
+is_container_stale() {
+	local current_image_id container_image_id
+	current_image_id=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null) || return 2
+	container_image_id=$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null) || return 1
+	[[ "$current_image_id" != "$container_image_id" ]]
+}
+
+has_active_exec_sessions() {
+	local exec_ids
+	exec_ids=$(docker inspect --format '{{json .ExecIDs}}' "$CONTAINER_NAME" 2>/dev/null)
+	# Docker emits `null` if no exec ever ran and `[]` once they've all finished.
+	[[ -n "$exec_ids" && "$exec_ids" != "null" && "$exec_ids" != "[]" ]]
+}
+
+wait_for_container_ready() {
+	local timeout_seconds=${YOLO_CONTAINER_READY_TIMEOUT:-30}
+
+	if docker exec "$CONTAINER_NAME" timeout "$timeout_seconds" bash -lc '
+		set -e
+		coproc ready_tail { tail -n +1 -f /.ready; }
+		trap '"'"'kill "$ready_tail_PID" 2>/dev/null || true'"'"' EXIT
+
+		while IFS= read -r line <&"${ready_tail[0]}"; do
+			if [ "$line" = locked ]; then
+				flock -x /.ready -c true
+				exit 0
+			fi
+		done
+
+		exit 1
+	'; then
+		return 0
+	fi
+
+	echo "Error: container ${CONTAINER_NAME} did not finish initialization within ${timeout_seconds}s." >&2
+	echo "The entrypoint may be stuck before releasing the /.ready lock." >&2
+	echo "Recent container logs:" >&2
+	docker logs --tail 50 "$CONTAINER_NAME" >&2 || true
+	return 1
+}
+
+start_dummy_container() {
+	# Ensure claude.json/env exist as regular files so Docker doesn't create
+	# them as directories.
+	[[ -f "${YOLO_REPO_ROOT}/claude.json" ]] || touch "${YOLO_REPO_ROOT}/claude.json"
+	[[ -f "${YOLO_REPO_ROOT}/env" ]] || touch "${YOLO_REPO_ROOT}/env"
+	mkdir -p "${YOLO_REPO_ROOT}"/{claude,codex}
+
+	# Record the hash->path mapping. This is the single creation chokepoint, so
+	# every path that spins up a container (launch, reset) ends up in `yo ls`.
+	if ! grep -q "^${CONTAINER_NAME}:" "$hash_name_map_file" 2>/dev/null; then
+		# Best-effort bookkeeping — never let a map write failure block the launch.
+		echo "${CONTAINER_NAME}:${MOUNT_SRC}" >> "$hash_name_map_file" || true
+	fi
+
+	echo "Launching dummy container ${CONTAINER_NAME}…"
+	docker run --rm -d --name "${CONTAINER_NAME}" \
+		--add-host=host.docker.internal:host-gateway \
+		--network yolo-internal \
+		--cap-add=NET_ADMIN \
+		--dns 8.8.8.8 --dns 1.1.1.1 \
+		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+		-v "${MOUNT_SRC}:/code-$HASH" \
+		-v "${YOLO_REPO_ROOT}/claude:/home/dev/.claude" \
+		-v "${YOLO_REPO_ROOT}/claude.json:/home/dev/.claude.json" \
+		-v "${YOLO_REPO_ROOT}/codex:/home/dev/.codex" \
+		-v "${YOLO_REPO_ROOT}/env:/home/dev/.env" \
+		-v "$HOME/.local/share/opencode":/home/dev/.local/share/opencode \
+		--workdir /code-"$HASH" \
+		"$IMAGE" tail -f /dev/null
+	wait_for_container_ready
+}
+
+ensure_dummy_container() {
+	if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+		if is_container_stale; then
+			echo "Warning: Container ${CONTAINER_NAME} uses an outdated image." >&2
+			if has_active_exec_sessions; then
+				echo "Warning: There are active sessions running in this container." >&2
+			fi
+			echo "Warning: Any modifications made inside the container will be destroyed." >&2
+			read -r -p "Replace container? Active sessions will be terminated. [y/N] " answer || answer=""
+			if [[ "$answer" =~ ^[Yy]$ ]]; then
+				echo "Replacing container ${CONTAINER_NAME}…"
+				docker rm -f "${CONTAINER_NAME}" >/dev/null
+				start_dummy_container
+			else
+				echo "Continuing with outdated container." >&2
+			fi
+		fi
+	else
+		start_dummy_container
+	fi
+}
+
+# Run the agent/command inside the container (interactive, remapped uid).
+docker_exec() {
+	exec docker exec -it --user "$(id -u):$(id -g)" \
+		--env-file "${YOLO_REPO_ROOT}/env" "$CONTAINER_NAME" "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Agent command table
+# ---------------------------------------------------------------------------
+
+build_agent_cmd() {
+	local tool="$1" mode="$2" model="$3"
+	AGENT_CMD=()
+	case "$tool" in
+		claude)
+			AGENT_CMD=(claude)
+			case "$mode" in
+				safe) ;;
+				auto) AGENT_CMD+=(--permission-mode auto) ;;
+				yolo) AGENT_CMD+=(--dangerously-skip-permissions) ;;
+				*) die "invalid mode: $mode (want safe|auto|yolo)" ;;
+			esac
+			;;
+		codex)
+			AGENT_CMD=(codex)
+			[[ "$mode" == yolo ]] && AGENT_CMD+=(--yolo)
+			# codex has no middle mode; safe/auto collapse to plain `codex`.
+			;;
+		opencode)
+			# opencode owns its own permission model; mode is ignored.
+			AGENT_CMD=(opencode)
+			;;
+		*) die "unknown tool: $tool (want claude|codex|opencode)" ;;
+	esac
+	# All three tools accept --model <name>; pass it uniformly when set.
+	[[ -n "$model" ]] && AGENT_CMD+=(--model "$model")
+	[[ ${#PASSTHROUGH[@]} -gt 0 ]] && AGENT_CMD+=("${PASSTHROUGH[@]}")
+	return 0
+}
+
+# ---------------------------------------------------------------------------
+# Management verbs
+# ---------------------------------------------------------------------------
+
+cmd_ls() {
+	[[ -f "$hash_name_map_file" ]] || { echo "(no yo containers yet)"; return 0; }
+	local running name path mark
+	running=$(docker ps --format '{{.Names}}' 2>/dev/null || true)
+	while IFS=: read -r name path; do
+		[[ -n "$name" ]] || continue
+		mark="  "
+		if grep -q "^${name}$" <<<"$running"; then mark="* "; fi
+		printf '%s%-22s %s\n' "$mark" "$name" "$path"
+	done < "$hash_name_map_file"
+}
+
+cmd_status() {
+	echo "Project   : $MOUNT_SRC"
+	echo "Container : $CONTAINER_NAME"
+	if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+		echo "State     : $(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME")"
+		echo "Image     : $(docker inspect --format '{{.Image}}' "$CONTAINER_NAME")"
+		local stale
+		is_container_stale && stale=0 || stale=$?
+		case "$stale" in
+			0) echo "Stale     : yes — run 'yo reset' to recreate" ;;
+			2) echo "Stale     : image not built ($IMAGE) — run make" ;;
+			*) echo "Stale     : no" ;;
+		esac
+	else
+		echo "State     : not created"
+	fi
+}
+
+cmd_stop() {
+	if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+		docker rm -f "$CONTAINER_NAME" >/dev/null
+		echo "Removed $CONTAINER_NAME"
+	else
+		echo "No container for this project."
+	fi
+}
+
+cmd_reset() {
+	docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	start_dummy_container
+	echo "Recreated $CONTAINER_NAME"
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing (two-phase: global opts + verb, then dispatch)
+# ---------------------------------------------------------------------------
+
+cli_mode=""        # set by --safe/--auto/-y (last wins)
+cli_model=""       # set by -m/--model
+cli_context=""     # set by -C/--context
+VERB=""
+PASSTHROUGH=()
+EXEC_ARGS=()
+
+# Phase 1: collect yo options up to the first positional (verb/tool) or `--`.
+# yo options are only recognized here, BEFORE the tool name. Once we hit a tool
+# (or `--`), parsing stops and everything left is forwarded to the agent.
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--)            shift; break ;;   # rest → passthrough, default tool
+		-y|--yolo)     cli_mode=yolo; shift ;;
+		--auto)        cli_mode=auto; shift ;;
+		--safe)        cli_mode=safe; shift ;;
+		-m|--model)    [[ $# -ge 2 ]] || die "$1 requires a value"; cli_model="$2"; shift 2 ;;
+		-C|--context)  [[ $# -ge 2 ]] || die "$1 requires a value"; cli_context="$2"; shift 2 ;;
+		-h|--help)     VERB=help; shift; break ;;
+		-*)            die "unknown option: $1 (try 'yo help')" ;;
+		*)             VERB="$1"; shift; break ;;
+	esac
+done
+
+# Phase 1b: capture trailing args by verb kind.
+case "$VERB" in
+	exec)
+		EXEC_ARGS=("$@"); set --
+		;;
+	help|sh|bash|status|reset|stop|ls)
+		[[ $# -eq 0 ]] || die "'$VERB' takes no arguments"
+		;;
+	""|claude|codex|opencode)
+		# Position-based passthrough: everything after the tool name goes to the
+		# agent verbatim — yo does not reinterpret it. A leading `--` separator
+		# is optional (handy when an agent arg would look like a yo flag).
+		[[ "${1:-}" == "--" ]] && shift
+		PASSTHROUGH=("$@"); set --
+		;;
+	*)
+		die "unknown command: $VERB (try 'yo help')"
+		;;
+esac
+
+# Resolve docker context: -C > inherited DOCKER_CONTEXT > YOLO_DOCKER_CONTEXT.
+if [[ -n "$cli_context" ]]; then
+	export DOCKER_CONTEXT="$cli_context"
+elif [[ -z "${DOCKER_CONTEXT:-}" && -n "${YOLO_DOCKER_CONTEXT:-}" ]]; then
+	export DOCKER_CONTEXT="$YOLO_DOCKER_CONTEXT"
+fi
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+case "$VERB" in
+	help)
+		usage
+		;;
+	ls)
+		cmd_ls
+		;;
+	status)
+		cmd_status
+		;;
+	stop)
+		cmd_stop
+		;;
+	reset)
+		cmd_reset
+		;;
+	sh|bash)
+		ensure_dummy_container
+		docker_exec bash
+		;;
+	exec)
+		[[ ${#EXEC_ARGS[@]} -gt 0 ]] || die "exec requires a command"
+		ensure_dummy_container
+		docker_exec "${EXEC_ARGS[@]}"
+		;;
+	""|claude|codex|opencode)
+		tool="${VERB:-${YOLO_TOOL:-claude}}"
+		mode="${cli_mode:-${YOLO_MODE:-auto}}"
+		model="${cli_model:-${YOLO_MODEL:-}}"
+		build_agent_cmd "$tool" "$mode" "$model"
+		ensure_dummy_container
+		docker_exec "${AGENT_CMD[@]}"
+		;;
+	*)
+		die "unknown command: $VERB (try 'yo help')"
+		;;
+esac
+
+# vim: set noet :
