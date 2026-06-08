@@ -16,15 +16,15 @@ endif
 endif
 
 clean:
-	docker rm -f llm-gateway
+	docker rm -f yolo-infra-gateway
 	docker network rm yolo-internal
 
 debug: FORCE
-	docker build --target debug --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
+	docker build --target debug --build-arg BLOCK_LAN=$(BLOCK_LAN) -t yolo-infra-gateway .
 	touch docker-img-ready
 
 docker-img-ready: default.conf ccxray.conf Dockerfile 99-iptables.sh FORCE
-	docker build --target base --build-arg BLOCK_LAN=$(BLOCK_LAN) -t llm-gateway .
+	docker build --target base --build-arg BLOCK_LAN=$(BLOCK_LAN) -t yolo-infra-gateway .
 	touch docker-img-ready
 
 FORCE:
@@ -41,25 +41,25 @@ yolo-internal:
 			yolo-internal
 
 run: docker-img-ready yolo-internal
-	-docker kill llm-gateway
-	-docker rm llm-gateway
+	-docker kill yolo-infra-gateway
+	-docker rm yolo-infra-gateway
 	# eth0: bridge (WAN, NAT-ed by Docker host)
 	# eth1: yolo-internal (LAN, --internal); IP auto-assigned, clients
-	#       reach this container by service name `llm-gateway` via embedded DNS
-	# Inside yolo-internal containers: export ANTHROPIC_BASE_URL=http://llm-gateway/claude/
+	#       reach this container by service name `yolo-infra-gateway` via embedded DNS
+	# Inside yolo-internal containers: export ANTHROPIC_BASE_URL=http://yolo-infra-gateway/claude/
 	# On docker host: export ANTHROPIC_BASE_URL=http://127.0.0.1:33380/claude/
 	#
 	# create → network connect → start, so both interfaces exist before
 	# 99-iptables.sh runs at container startup
-	docker create --name llm-gateway \
+	docker create --name yolo-infra-gateway \
 		--network bridge \
 		--cap-add=NET_ADMIN \
 		--sysctl net.ipv4.ip_forward=1 \
 		-p 127.0.0.1:33380:80 \
 		-p 127.0.0.1:33390:33390 \
 		--restart unless-stopped \
-		llm-gateway
-	docker network connect --ip 192.168.10.2 yolo-internal llm-gateway
-	docker start llm-gateway
+		yolo-infra-gateway
+	docker network connect --ip 192.168.10.2 yolo-internal yolo-infra-gateway
+	docker start yolo-infra-gateway
 
 .PHONY: all run yolo-internal clean debug FORCE

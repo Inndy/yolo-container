@@ -6,14 +6,14 @@ printf 'locked\n' >&3
 
 HOST_UID=${HOST_UID:-1000}
 HOST_GID=${HOST_GID:-1000}
-ROUTER_IP=$(getent hosts llm-gateway | awk '{print $1}')
+ROUTER_IP=$(getent hosts yolo-infra-gateway | awk '{print $1}')
 DEV_UID=$(id -u dev)
 DEV_GID=$(id -g dev)
 NEED_CHOWN=0
 
 # Override Docker's default route (points at yolo-internal bridge gw .1, which
 # leads nowhere because the network is --internal) so traffic egresses through
-# the llm-gateway nginx/iptables router.
+# the yolo-infra-gateway nginx/iptables router.
 if [ -n "$ROUTER_IP" ]; then
 	ip route del default 2>/dev/null || true
 	ip route add default via "$ROUTER_IP" 2>/dev/null || \

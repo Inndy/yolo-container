@@ -22,33 +22,33 @@ endif
 REPO_ROOT := $(abspath $(CURDIR)/..)
 
 clean:
-	-docker rm -f ccxray
+	-docker rm -f yolo-infra-ccxray
 
 docker-img-ready: Dockerfile entrypoint.sh FORCE
 	docker build \
 		--build-arg CCXRAY_VERSION=$(CCXRAY_VERSION) \
 		--build-arg CCXRAY_CACHEBUST=$(CCXRAY_CACHEBUST) \
-		-t ccxray .
+		-t yolo-infra-ccxray .
 	touch docker-img-ready
 
 FORCE:
 
-# ccxray joins the EXISTING shared yolo-internal network (same as dev containers
-# and llm-gateway); it creates no network. Single-homed: no --network bridge, no
-# -p, no --env-file. Egress rides the llm-gateway NAT via the route rewrite in
-# entrypoint.sh, identical to a dev container.
+# yolo-infra-ccxray joins the EXISTING shared yolo-internal network (same as dev
+# containers and yolo-infra-gateway); it creates no network. Single-homed: no
+# --network bridge, no -p, no --env-file. Egress rides the yolo-infra-gateway NAT
+# via the route rewrite in entrypoint.sh, identical to a dev container.
 run: docker-img-ready
-	-docker kill ccxray
-	-docker rm ccxray
+	-docker kill yolo-infra-ccxray
+	-docker rm yolo-infra-ccxray
 	mkdir -p "$(REPO_ROOT)/ccxray-data"
-	docker create --name ccxray \
+	docker create --name yolo-infra-ccxray \
 		--network yolo-internal \
 		--cap-add=NET_ADMIN \
 		--dns 8.8.8.8 --dns 1.1.1.1 \
 		--restart unless-stopped \
 		-v "$(REPO_ROOT)/claude:/root/.claude:ro" \
 		-v "$(REPO_ROOT)/ccxray-data:/root/.ccxray" \
-		ccxray
-	docker start ccxray
+		yolo-infra-ccxray
+	docker start yolo-infra-ccxray
 
 .PHONY: all run clean FORCE

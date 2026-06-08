@@ -48,8 +48,8 @@ x64: build-amd64
 x86_64: build-amd64
 
 # Ordered bring-up for the gateway + ccxray sidecar. `yolo-internal` is the
-# existing shared-network target above (created only if absent); ccxray and
-# llm-gateway both attach to it — no per-service network.
+# existing shared-network target above (created only if absent); yolo-infra-ccxray
+# and yolo-infra-gateway both attach to it — no per-service network.
 .PHONY: stack gateway ccxray
 gateway: yolo-internal
 	$(MAKE) -C api-gateway run
