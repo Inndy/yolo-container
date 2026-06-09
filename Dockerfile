@@ -72,10 +72,18 @@ RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
 	git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build && \
 	~/.rbenv/bin/rbenv init bash
 
-# Install codex
-RUN npm i -g @openai/codex
-
+# Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | bash
+
+# Install bun
+RUN curl -fsSL https://bun.sh/install | bash
+
+# Install dummy shim (tools would be installed when first time executed)
+ENV PATH="${DEV_HOME}/.local/dummybin:$PATH"
+RUN mkdir "${DEV_HOME}/.local/dummybin"
+COPY tools-lazy/omp "${DEV_HOME}/.local/dummybin"
+COPY tools-lazy/codex "${DEV_HOME}/.local/dummybin"
+COPY tools-lazy/agy "${DEV_HOME}/.local/dummybin"
 
 RUN echo '[ -f ~/.env ] && { set -a; source ~/.env; set +a; }' >> ~/.bashrc
 

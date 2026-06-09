@@ -134,7 +134,7 @@ start_dummy_container() {
 	# them as directories.
 	[[ -f "${YOLO_REPO_ROOT}/claude.json" ]] || touch "${YOLO_REPO_ROOT}/claude.json"
 	[[ -f "${YOLO_REPO_ROOT}/env" ]] || touch "${YOLO_REPO_ROOT}/env"
-	mkdir -p "${YOLO_REPO_ROOT}"/{claude,codex}
+	mkdir -p "${YOLO_REPO_ROOT}"/{claude,codex,omp,gemini}
 
 	# Record the hash->path mapping. This is the single creation chokepoint, so
 	# every path that spins up a container (launch, reset) ends up in `yo ls`.
@@ -151,6 +151,8 @@ start_dummy_container() {
 		--dns 8.8.8.8 --dns 1.1.1.1 \
 		-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
 		-v "${MOUNT_SRC}:/code-$HASH" \
+		-v "${YOLO_REPO_ROOT}/omp:/home/dev/.omp" \
+		-v "${YOLO_REPO_ROOT}/gemini:/home/dev/.gemini" \
 		-v "${YOLO_REPO_ROOT}/claude:/home/dev/.claude" \
 		-v "${YOLO_REPO_ROOT}/claude.json:/home/dev/.claude.json" \
 		-v "${YOLO_REPO_ROOT}/codex:/home/dev/.codex" \

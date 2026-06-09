@@ -1,0 +1,10 @@
+#!/bin/bash
+
+echo "Installing codex..."
+npm i -g @openai/codex
+
+if command -v codex 2>&-
+then
+    rm "$0"
+    exec codex "$@"
+fi
