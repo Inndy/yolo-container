@@ -12,10 +12,13 @@ RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.l
 			curl build-essential git mingw-w64 python3 python3-dev python3-pip \
 			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd iproute2 unzip \
 			libssl-dev libgmp-dev libffi-dev libyaml-dev libreadline-dev libgdbm-dev autoconf bison \
-			fd-find fzf ripgrep git-delta && \
+			fd-find fzf ripgrep git-delta locales && \
+	locale-gen en_US.UTF-8 && \
+	update-locale LANG=en_US.UTF-8 && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* && \
 	touch /.ready && chmod 666 /.ready
+ENV LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 # arm64 or x86_64
 ARG NEOVIM_ARCH="arm64"
