@@ -42,7 +42,8 @@ LAUNCH OPTIONS  (permission mode: safe < auto < yolo)
                      args after the tool are forwarded anyway)
 
 CONTAINER COMMANDS
-  sh, bash           interactive shell in the container
+  sh, bash [args]    shell in the container (no args: interactive;
+                     with args: forwarded, e.g. yo sh -c './deploy.sh')
   exec CMD...        run a one-off command in the container
   status             show this project's container (state, image, staleness)
   reset              throw away & recreate the container (e.g. after `make`)
@@ -307,7 +308,12 @@ case "$VERB" in
 	exec)
 		EXEC_ARGS=("$@"); set --
 		;;
-	help|sh|bash|status|reset|stop|ls)
+	sh|bash)
+		# No args → interactive shell. With args → forwarded to the shell, so
+		# `yo sh -c './scripts/deploy.sh'` runs that command under sh.
+		EXEC_ARGS=("$@"); set --
+		;;
+	help|status|reset|stop|ls)
 		[[ $# -eq 0 ]] || die "'$VERB' takes no arguments"
 		;;
 	""|claude|codex|opencode)
@@ -351,7 +357,7 @@ case "$VERB" in
 		;;
 	sh|bash)
 		ensure_dummy_container
-		docker_exec bash
+		docker_exec "$VERB" "${EXEC_ARGS[@]}"
 		;;
 	exec)
 		[[ ${#EXEC_ARGS[@]} -gt 0 ]] || die "exec requires a command"
