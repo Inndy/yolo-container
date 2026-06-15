@@ -50,7 +50,7 @@ on its invoked name:
 - **Mode**: `--safe` (prompt for everything) · `--auto` (default) · `-y`/`--yolo` (skip prompts). Each maps to the right per-tool flags, e.g. claude auto → `--permission-mode auto`, claude yolo → `--dangerously-skip-permissions`, codex yolo → `--yolo`.
 - **Model**: `-m, --model NAME` (default unset).
 
-Defaults come from `YOLO_TOOL` / `YOLO_MODE` / `YOLO_MODEL`; resolution is **CLI flag > env var > built-in**. Anything after the tool name is forwarded to the agent verbatim.
+Defaults come from `YOLO_TOOL` / `YOLO_MODE` / `YOLO_MODEL` (global, shell profile) or per-repo git config keys `yolo.tool` / `yolo.mode` / `yolo.model` (`YOLO_TOOL` ↔ `yolo.tool`, etc.). The git config layer lives in `.git/config` — per-clone, not committed — so each person keeps their own per-repo defaults (e.g. `git config yolo.tool opencode`). Resolution is **CLI flag > env var > git config > built-in**. Anything after the tool name is forwarded to the agent verbatim.
 
 ### Legacy symlink shim (`bin/opencode-docker`)
 

@@ -6,17 +6,25 @@
 # $0 + symlinks). Tool and permission mode are arguments, not filenames.
 #
 # Defaults come from YOLO_* env vars (set them in your shell profile, the same
-# place as YOLO_DOCKER_CONTEXT). Resolution is: CLI flag > env var > built-in.
+# place as YOLO_DOCKER_CONTEXT) or per-repo git config (yolo.* in .git/config).
+# Resolution is: CLI flag > env var > git config > built-in.
 #
-#   YOLO_TOOL    claude | codex | opencode   (default claude)
-#   YOLO_MODE    safe | auto | yolo           (default auto)
-#   YOLO_MODEL   model name                   (default unset -> no --model)
+#   YOLO_TOOL  / yolo.tool    claude | codex | opencode   (default claude)
+#   YOLO_MODE  / yolo.mode    safe | auto | yolo           (default auto)
+#   YOLO_MODEL / yolo.model   model name                   (default unset -> no --model)
 #   YOLO_DOCKER_CONTEXT     docker context to pin every `docker` call to
 #   YOLO_CONTAINER_PREFIX   container name prefix (default yolo-dev-)
 
 set -e
 
 die() { echo "yo: $*" >&2; exit 1; }
+
+# first non-empty argument wins (used for CLI > env > git-config > default chains)
+coalesce() { local v; for v in "$@"; do [[ -n "$v" ]] && { printf '%s' "$v"; return; }; done; return 0; }
+
+# read a project-local default from `.git/config` ([yolo] section); empty if unset
+# or outside a git repo. GIT_ROOT is only set in the git branch below.
+gitcfg() { [[ -n "${GIT_ROOT:-}" ]] && git -C "$GIT_ROOT" config --default '' --get "yolo.$1" 2>/dev/null; }
 
 usage() {
 	cat <<'EOF'
@@ -51,9 +59,10 @@ CONTAINER COMMANDS
   ls                 list all yo containers (project path -> container)
   help               show this help
 
-DEFAULTS (env vars; CLI flag > env var > built-in)
+DEFAULTS (CLI flag > env var > git config > built-in)
   YOLO_TOOL=claude   YOLO_MODE=auto   YOLO_MODEL=<unset>
   YOLO_DOCKER_CONTEXT=<unset>   YOLO_CONTAINER_PREFIX=yolo-dev-
+  per-repo: git config yolo.tool|yolo.mode|yolo.model  (lives in .git/config)
 EOF
 }
 
@@ -365,9 +374,10 @@ case "$VERB" in
 		docker_exec "${EXEC_ARGS[@]}"
 		;;
 	""|claude|codex|opencode)
-		tool="${VERB:-${YOLO_TOOL:-claude}}"
-		mode="${cli_mode:-${YOLO_MODE:-auto}}"
-		model="${cli_model:-${YOLO_MODEL:-}}"
+		# Resolution: CLI flag > env var > git config (yolo.*) > built-in.
+		tool=$(coalesce  "$VERB"       "${YOLO_TOOL:-}"  "$(gitcfg tool)"  claude)
+		mode=$(coalesce  "$cli_mode"   "${YOLO_MODE:-}"  "$(gitcfg mode)"  auto)
+		model=$(coalesce "$cli_model"  "${YOLO_MODEL:-}" "$(gitcfg model)")
 		build_agent_cmd "$tool" "$mode" "$model"
 		ensure_dummy_container
 		docker_exec "${AGENT_CMD[@]}"

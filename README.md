@@ -137,7 +137,10 @@ Everything **after** the tool name is forwarded verbatim to the agent, e.g.
 Each maps to the right flags per tool — e.g. `claude` auto → `claude --permission-mode auto`,
 `claude` yolo → `claude --dangerously-skip-permissions`, `codex` yolo → `codex --yolo`.
 Defaults come from `YOLO_TOOL` / `YOLO_MODE` / `YOLO_MODEL` env vars (set them in
-your shell profile next to `YOLO_DOCKER_CONTEXT`); resolution is **CLI flag > env var > built-in**.
+your shell profile next to `YOLO_DOCKER_CONTEXT`) or per-repo git config keys
+`yolo.tool` / `yolo.mode` / `yolo.model` (e.g. `git config yolo.tool opencode` —
+stored in `.git/config`, per-clone, not committed). Resolution is
+**CLI flag > env var > git config > built-in**.
 
 The launcher automatically detects and replaces containers running on an outdated image. If active sessions are running, it will prompt before replacing.
 

@@ -138,7 +138,9 @@ bin/yo stop        # 停止並移除
 每種組合都會對應到該工具正確的旗標，例如 `claude` auto → `claude --permission-mode auto`、
 `claude` yolo → `claude --dangerously-skip-permissions`、`codex` yolo → `codex --yolo`。
 預設值取自 `YOLO_TOOL`／`YOLO_MODE`／`YOLO_MODEL` 環境變數（與 `YOLO_DOCKER_CONTEXT`
-放在同一處的 shell profile 即可）；解析順序為 **CLI 旗標 > 環境變數 > 內建預設**。
+放在同一處的 shell profile 即可），或各 repo 的 git config 設定 `yolo.tool`／`yolo.mode`／`yolo.model`
+（例如 `git config yolo.tool opencode`，存在 `.git/config`、每個 clone 各自獨立、不會被 commit）；
+解析順序為 **CLI 旗標 > 環境變數 > git config > 內建預設**。
 
 啟動器會自動偵測並替換執行中的舊版映像檔容器。若有正在進行的 session，替換前會先詢問確認。
 
