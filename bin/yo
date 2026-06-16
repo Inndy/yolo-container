@@ -19,8 +19,34 @@ set -e
 
 die() { echo "yo: $*" >&2; exit 1; }
 
-# first non-empty argument wins (used for CLI > env > git-config > default chains)
-coalesce() { local v; for v in "$@"; do [[ -n "$v" ]] && { printf '%s' "$v"; return; }; done; return 0; }
+# Resolve a setting through the precedence chain CLI flag > env var > git config
+# > built-in. Returns BOTH results via out-param globals — RESOLVED_VAL (the
+# value; empty when nothing is set, e.g. model's "no --model" default) and
+# RESOLVED_SRC (which layer won; never empty). Not stdout: a caller that wants
+# the value AND the source can't get both from one `$(resolve ...)`, because the
+# command substitution runs in a subshell and any var it sets is lost. So both
+# the launcher and `yo status` call resolve plainly and read the globals — one
+# uniform shape, and their precedence can never drift apart. (Out-params work
+# because a var set in a function without `local` is visible to the caller; this
+# is plain POSIX dynamic scoping, no subshell, nothing bash-version-specific.)
+resolve() {
+	local cli="$1" env_val="$2" git_val="$3" builtin="$4"
+	if   [[ -n "$cli"     ]]; then RESOLVED_SRC='CLI flag';   RESOLVED_VAL="$cli"
+	elif [[ -n "$env_val" ]]; then RESOLVED_SRC='env';        RESOLVED_VAL="$env_val"
+	elif [[ -n "$git_val" ]]; then RESOLVED_SRC='git config'; RESOLVED_VAL="$git_val"
+	elif [[ -n "$builtin" ]]; then RESOLVED_SRC='built-in';   RESOLVED_VAL="$builtin"
+	else                           RESOLVED_SRC='default';    RESOLVED_VAL=''
+	fi
+}
+
+# One "Label     : value (source)" line for `yo status`. Resolves through the
+# standing-default chain (empty CLI slot — status shows defaults, not one-off
+# flags) and shows an unset value as "(unset)". Args: label, env, git, built-in.
+status_line() {
+	local label=$1; shift
+	resolve '' "$@"
+	printf '%-10s: %s (%s)\n' "$label" "${RESOLVED_VAL:-(unset)}" "$RESOLVED_SRC"
+}
 
 # read a project-local default from `.git/config` ([yolo] section); empty if unset
 # or outside a git repo. GIT_ROOT is only set in the git branch below.
@@ -267,6 +293,14 @@ cmd_status() {
 	else
 		echo "State     : not created"
 	fi
+
+	# Resolved launch defaults. Status reflects the *standing* defaults, so the
+	# CLI-flag slot is empty here — only env var > git config > built-in apply.
+	# "Perm mode" rather than "Mode" so it doesn't shadow "Model" when scanning.
+	echo
+	status_line Tool        "${YOLO_TOOL:-}"  "$(gitcfg tool)"  claude
+	status_line 'Perm mode' "${YOLO_MODE:-}"  "$(gitcfg mode)"  auto
+	status_line Model       "${YOLO_MODEL:-}" "$(gitcfg model)" ''
 }
 
 cmd_stop() {
@@ -375,9 +409,10 @@ case "$VERB" in
 		;;
 	""|claude|codex|opencode)
 		# Resolution: CLI flag > env var > git config (yolo.*) > built-in.
-		tool=$(coalesce  "$VERB"       "${YOLO_TOOL:-}"  "$(gitcfg tool)"  claude)
-		mode=$(coalesce  "$cli_mode"   "${YOLO_MODE:-}"  "$(gitcfg mode)"  auto)
-		model=$(coalesce "$cli_model"  "${YOLO_MODEL:-}" "$(gitcfg model)")
+		# Same chain `yo status` reports; here we only read RESOLVED_VAL.
+		resolve "$VERB"      "${YOLO_TOOL:-}"  "$(gitcfg tool)"  claude;  tool=$RESOLVED_VAL
+		resolve "$cli_mode"  "${YOLO_MODE:-}"  "$(gitcfg mode)"  auto;    mode=$RESOLVED_VAL
+		resolve "$cli_model" "${YOLO_MODEL:-}" "$(gitcfg model)" '';      model=$RESOLVED_VAL
 		build_agent_cmd "$tool" "$mode" "$model"
 		ensure_dummy_container
 		docker_exec "${AGENT_CMD[@]}"
