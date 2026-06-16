@@ -108,6 +108,10 @@ else
 	MOUNT_SRC="$PWD"
 fi
 
+# Human-readable label for the window/terminal title (the container name and
+# mount stay keyed on $HASH; this is purely cosmetic).
+PROJ_NAME=$(basename "$MOUNT_SRC")
+
 hash_name_map_file=~/.yolocontainer_map
 CONTAINER_PREFIX="${YOLO_CONTAINER_PREFIX:-yolo-dev-}"
 CONTAINER_NAME="${CONTAINER_PREFIX}${HASH}"
@@ -221,9 +225,34 @@ ensure_dummy_container() {
 	fi
 }
 
-# Run the agent/command inside the container (interactive, remapped uid).
+# Label the session so it's identifiable at a glance. Inside tmux we set the
+# window name (shows in the status line with no config, unlike pane titles).
+# rename-window disables that window's automatic-rename, so on exit we re-enable
+# it and tmux's process-name naming takes back over. Window names are per-window,
+# so two yo's split in one window share a name; we don't track that — last one to
+# exit just re-enables automatic-rename for both. Outside tmux: terminal title.
+_title_tmux=
+set_title() {
+	if [[ -n "${TMUX:-}" ]]; then
+		tmux rename-window "$1" 2>/dev/null || return 0
+		_title_tmux=1
+		trap restore_title EXIT
+	elif [[ -t 1 ]]; then
+		printf '\033]0;%s\007' "$1"
+	fi
+}
+
+# Hand the window name back to tmux's automatic (process-name) naming on exit.
+restore_title() {
+	[[ -n "$_title_tmux" ]] || return 0
+	tmux setw -u automatic-rename 2>/dev/null || return 0
+}
+
+# Run the agent/command inside the container (interactive, remapped uid). Runs
+# as a child rather than exec'ing the process away, so the restore_title EXIT
+# trap fires when the session ends.
 docker_exec() {
-	exec docker exec -it --user "$(id -u):$(id -g)" \
+	docker exec -it --user "$(id -u):$(id -g)" \
 		--env-file "${YOLO_REPO_ROOT}/env" "$CONTAINER_NAME" "$@"
 }
 
@@ -400,11 +429,13 @@ case "$VERB" in
 		;;
 	sh|bash)
 		ensure_dummy_container
+		set_title "yo:$PROJ_NAME"
 		docker_exec "$VERB" "${EXEC_ARGS[@]}"
 		;;
 	exec)
 		[[ ${#EXEC_ARGS[@]} -gt 0 ]] || die "exec requires a command"
 		ensure_dummy_container
+		set_title "yo:$PROJ_NAME"
 		docker_exec "${EXEC_ARGS[@]}"
 		;;
 	""|claude|codex|opencode)
@@ -415,6 +446,7 @@ case "$VERB" in
 		resolve "$cli_model" "${YOLO_MODEL:-}" "$(gitcfg model)" '';      model=$RESOLVED_VAL
 		build_agent_cmd "$tool" "$mode" "$model"
 		ensure_dummy_container
+		set_title "yo:$PROJ_NAME"
 		docker_exec "${AGENT_CMD[@]}"
 		;;
 	*)
