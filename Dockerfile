@@ -87,6 +87,7 @@ RUN mkdir "${DEV_HOME}/.local/dummybin"
 COPY tools-lazy/omp "${DEV_HOME}/.local/dummybin"
 COPY tools-lazy/codex "${DEV_HOME}/.local/dummybin"
 COPY tools-lazy/agy "${DEV_HOME}/.local/dummybin"
+COPY tools-lazy/pnpm "${DEV_HOME}/.local/dummybin"
 
 RUN echo '[ -f ~/.env ] && { set -a; source ~/.env; set +a; }' >> ~/.bashrc
 

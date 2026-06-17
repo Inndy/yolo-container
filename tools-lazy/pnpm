@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo "Installing pnpm..."
+sudo -H env PATH="$PATH" corepack enable
+corepack prepare pnpm@latest --activate
+
+rm "$0"
+exec pnpm "$@"
