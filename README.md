@@ -165,3 +165,41 @@ ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude-yolo   # YOLO mode
 ```
 
 New setups should symlink `bin/yo` directly and pass the mode as an argument.
+
+## Upgrading from a pre-`yo` version
+
+If your machine still launches via the old name-based `bin/opencode-docker` symlinks, two breaking changes apply:
+
+1. **Launcher:** `bin/opencode-docker` is now a thin shim forwarding to `bin/yo`. The old symlinks keep working, but new setups should symlink `bin/yo` (see [Usage](#usage)).
+2. **Infra containers renamed:** `llm-gateway` → `yolo-infra-gateway`, `ccxray` → `yolo-infra-ccxray` (the dev container / image / map-file prefixes moved too). The new launcher uses different names, so it won't reuse the old containers — they linger until you remove them, and any stale `ANTHROPIC_BASE_URL` hostname must be updated.
+
+| Item | Old | New |
+|------|-----|-----|
+| gateway container / image | `llm-gateway` | `yolo-infra-gateway` |
+| ccxray container / image | `ccxray` | `yolo-infra-ccxray` |
+| dev container | `opencode-<hash>` | `yolo-dev-<hash>` |
+| dev image | `opencode-dev:latest` | `yolo-container-dev:latest` |
+| hash→path map | `~/.opencode_map` | `~/.yolocontainer_map` |
+
+```bash
+git pull
+
+# Remove old infra + dev containers/images (new names won't reuse them)
+docker rm -f llm-gateway ccxray 2>/dev/null
+docker ps -a --filter 'name=opencode-' --format '{{.Names}}' | xargs -r docker rm -f
+docker rmi llm-gateway ccxray opencode-dev:latest 2>/dev/null
+rm -f ~/.opencode_map
+
+# Rebuild infra under the new names, then the dev image (its entrypoint now
+# route-rewrites to yolo-infra-gateway, so the old image can't be reused)
+make -C api-gateway run
+make -C ccxray run     # only if you use the ccxray dashboard
+make
+
+# In env, update ANTHROPIC_BASE_URL hostnames:
+#   ccxray:5577        -> yolo-infra-ccxray:5577
+#   llm-gateway/claude/ -> yolo-infra-gateway/claude/
+ln -sf "$PWD/bin/yo" ~/.local/bin/yo
+```
+
+On macOS, the bare `docker` commands above don't read `YOLO_DOCKER_CONTEXT` (only `make` does) — prefix them with `--context "$YOLO_DOCKER_CONTEXT"`.

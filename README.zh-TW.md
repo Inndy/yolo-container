@@ -164,3 +164,41 @@ ln -s "$PWD/bin/opencode-docker" ~/.local/bin/claude-yolo   # YOLO 模式
 ```
 
 新的設定建議直接符號連結 `bin/yo`，並把模式當成參數傳入。
+
+## 從舊版升級
+
+如果你的機器還是用舊的、靠名稱分派的 `bin/opencode-docker` 符號連結啟動，這次有兩個破壞性變更：
+
+1. **啟動器：** `bin/opencode-docker` 現在是轉發給 `bin/yo` 的精簡 shim。舊符號連結仍可用，但新設定建議改連結 `bin/yo`（見[使用方式](#使用方式)）。
+2. **infra 容器改名：** `llm-gateway` → `yolo-infra-gateway`、`ccxray` → `yolo-infra-ccxray`（dev 容器 / 映像檔 / map 檔的前綴也一併更動）。新啟動器用的是不同名字，**不會重用舊容器**——舊容器會一直留著直到你手動移除，且 `ANTHROPIC_BASE_URL` 裡的舊 hostname 也必須更新。
+
+| 項目 | 舊名 | 新名 |
+|------|------|------|
+| gateway 容器 / 映像檔 | `llm-gateway` | `yolo-infra-gateway` |
+| ccxray 容器 / 映像檔 | `ccxray` | `yolo-infra-ccxray` |
+| dev 容器 | `opencode-<hash>` | `yolo-dev-<hash>` |
+| dev 映像檔 | `opencode-dev:latest` | `yolo-container-dev:latest` |
+| hash→path map 檔 | `~/.opencode_map` | `~/.yolocontainer_map` |
+
+```bash
+git pull
+
+# 移除舊的 infra 與 dev 容器 / 映像檔（新名字不會重用它們）
+docker rm -f llm-gateway ccxray 2>/dev/null
+docker ps -a --filter 'name=opencode-' --format '{{.Names}}' | xargs -r docker rm -f
+docker rmi llm-gateway ccxray opencode-dev:latest 2>/dev/null
+rm -f ~/.opencode_map
+
+# 用新名字重建 infra，再重 build dev 映像檔（其 entrypoint 現在會 route-rewrite
+# 到 yolo-infra-gateway，所以舊映像檔不能再用）
+make -C api-gateway run
+make -C ccxray run     # 只有用 ccxray 儀表板才需要
+make
+
+# 在 env 裡更新 ANTHROPIC_BASE_URL 的 hostname：
+#   ccxray:5577        -> yolo-infra-ccxray:5577
+#   llm-gateway/claude/ -> yolo-infra-gateway/claude/
+ln -sf "$PWD/bin/yo" ~/.local/bin/yo
+```
+
+macOS 上，上面的裸 `docker` 指令不會讀 `YOLO_DOCKER_CONTEXT`（只有 `make` 會）——請自行加上 `--context "$YOLO_DOCKER_CONTEXT"`。
