@@ -1,8 +1,10 @@
 #!/bin/bash
+set -eo pipefail
 
 echo "Installing pnpm..."
 sudo -H env PATH="$PATH" corepack enable
 corepack prepare pnpm@latest --activate
 
-rm "$0"
+rm -f -- "$0"
+hash -r
 exec pnpm "$@"

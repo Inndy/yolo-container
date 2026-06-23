@@ -1,10 +1,9 @@
 #!/bin/bash
+set -eo pipefail
 
 echo "Installing agy..."
 curl -fsSL https://antigravity.google/cli/install.sh | bash
 
-if command -v agy 2>&-
-then
-    rm "$0"
-    exec agy "$@"
-fi
+rm -f -- "$0"
+hash -r
+exec agy "$@"

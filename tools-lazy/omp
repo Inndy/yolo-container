@@ -1,10 +1,9 @@
 #!/bin/bash
+set -eo pipefail
 
 echo "Installing omp..."
 bun install -g @oh-my-pi/pi-coding-agent
 
-if command -v omp 2>&-
-then
-    rm "$0"
-    exec omp "$@"
-fi
+rm -f -- "$0"
+hash -r
+exec omp "$@"
