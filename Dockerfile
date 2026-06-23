@@ -12,6 +12,7 @@ RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.l
 			curl build-essential git mingw-w64 python3 python3-dev python3-pip \
 			jq silversearcher-ag tmux htop sudo pkgconf xxd zstd iproute2 unzip \
 			libssl-dev libgmp-dev libffi-dev libyaml-dev libreadline-dev libgdbm-dev autoconf bison \
+			clang libclang-dev \
 			fd-find fzf ripgrep git-delta locales && \
 	locale-gen en_US.UTF-8 && \
 	update-locale LANG=en_US.UTF-8 && \
