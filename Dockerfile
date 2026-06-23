@@ -57,8 +57,8 @@ RUN npm config set prefix ~/.local
 RUN go install honnef.co/go/tools/cmd/staticcheck@latest && \
 	go install github.com/mgechev/revive@latest
 
-RUN curl -fsSL https://opencode.ai/install | bash && \
-	mkdir -p ~/.config/opencode
+# opencode is lazily installed now
+RUN mkdir -p ~/.config/opencode
 ENV PATH="$PATH:${DEV_HOME}/.opencode/bin"
 
 ENV PATH="$PATH:${DEV_HOME}/.local/bin"

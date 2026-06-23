@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eo pipefail
+
+echo "Installing opencode..."
+curl -fsSL https://opencode.ai/install | bash
+
+rm -f -- "$0"
+hash -r
+exec opencode "$@"
