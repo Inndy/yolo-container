@@ -67,7 +67,7 @@ ENV IS_SANDBOX=1
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Install rust for ruby yjit
-ENV PATH="$PATH:{$DEV_HOME}/.cargo/bin"
+ENV PATH="$PATH:${DEV_HOME}/.cargo/bin"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Install rbenv
