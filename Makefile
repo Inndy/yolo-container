@@ -29,7 +29,7 @@ yolo-internal:
 build-%: Dockerfile entrypoint.sh $(DEFAULT_FILES)
 	@arch=$*; \
 	case $$arch in \
-		arm64) NEOVIM_ARCH=arm64 NODE_ARCH=arm64 GO_ARCH=arm64 UBUNTU_DEFAULT_MIRROR=ports.ubuntu.com ;; \
+		arm64) NEOVIM_ARCH=arm64 NODE_ARCH=arm64 GO_ARCH=arm64 UBUNTU_DEFAULT_MIRROR=archive.ubuntu.com ;; \
 		amd64|x64|x86_64) NEOVIM_ARCH=x86_64 NODE_ARCH=x64 GO_ARCH=amd64 UBUNTU_DEFAULT_MIRROR=archive.ubuntu.com ;; \
 		*) echo "Unsupported architecture: $$arch"; exit 1 ;; \
 	esac; \

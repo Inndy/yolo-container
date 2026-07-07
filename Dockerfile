@@ -4,7 +4,7 @@ ARG DEV_USER=dev
 ARG DEV_HOME=/home/dev
 
 # Assume you are using arm64
-ARG UBUNTU_DEFAULT_MIRROR="ports.ubuntu.com"
+ARG UBUNTU_DEFAULT_MIRROR="archive.ubuntu.com"
 # I live in Taiwan. Choose your own mirror
 ARG UBUNTU_MIRROR="mirror.twds.com.tw"
 RUN sed -e "s/${UBUNTU_DEFAULT_MIRROR}/${UBUNTU_MIRROR}/g" -i /etc/apt/sources.list.d/ubuntu.sources && \
