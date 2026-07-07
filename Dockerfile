@@ -71,7 +71,7 @@ ENV PATH="$PATH:${DEV_HOME}/.cargo/bin"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Install rbenv
-ENV PATH="${DEV_HOME}/.rbenv/bin:$PATH"
+ENV PATH="${DEV_HOME}/.rbenv/bin:${DEV_HOME}/.rbenv/shims:$PATH"
 RUN git clone https://github.com/rbenv/rbenv.git ~/.rbenv --depth 1 && \
 	git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build && \
 	~/.rbenv/bin/rbenv init bash
